@@ -377,6 +377,9 @@ void PKCS11_ec_key_method_free(void);
 #else
 ECDSA_METHOD  *PKCS11_get_ecdsa_method(void);
 void PKCS11_ecdsa_method_free(void);
+#if defined(BUILD_ECDH_102)
+ECDH_METHOD *PKCS11_get_ecdh_method(void);
+#endif /* BUILD_ECDH_102 */
 #endif
 
 /**

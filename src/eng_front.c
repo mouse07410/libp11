@@ -172,6 +172,9 @@ static int bind_helper(ENGINE * e)
 #if OPENSSL_VERSION_NUMBER  < 0x10100002L
 #ifndef OPENSSL_NO_ECDSA
 			!ENGINE_set_ECDSA(e, PKCS11_get_ecdsa_method()) ||
+ #if defined(BUILD_ECDH_102)
+			!ENGINE_set_ECDH(e, PKCS11_get_ecdh_method()) ||
+#endif /*BUILD_ECDH_102 */
 #endif
 #else /* OPENSSL_VERSION_NUMBER */
 #ifndef OPENSSL_NO_EC
