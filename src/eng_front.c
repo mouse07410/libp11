@@ -63,8 +63,8 @@
 #include "engine.h"
 #include <stdio.h>
 #include <string.h>
-#include <openssl/opensslv.h>
 #include <openssl/opensslconf.h>
+#include <openssl/opensslv.h>
 #include <openssl/crypto.h>
 #include <openssl/objects.h>
 #include <openssl/engine.h>
@@ -85,11 +85,11 @@ static int pkcs11_idx = -1;
 static const ENGINE_CMD_DEFN engine_cmd_defns[] = {
 	{CMD_SO_PATH,
 		"SO_PATH",
-		"Specifies the path to the 'pkcs11-engine' shared library",
+		"Specifies the path to the 'pkcs11' engine shared library",
 		ENGINE_CMD_FLAG_STRING},
 	{CMD_MODULE_PATH,
 		"MODULE_PATH",
-		"Specifies the path to the pkcs11 module shared library",
+		"Specifies the path to the PKCS#11 module shared library",
 		ENGINE_CMD_FLAG_STRING},
 	{CMD_PIN,
 		"PIN",
@@ -109,7 +109,7 @@ static const ENGINE_CMD_DEFN engine_cmd_defns[] = {
 		ENGINE_CMD_FLAG_INTERNAL},
 	{CMD_INIT_ARGS,
 		"INIT_ARGS",
-		"Specifies additional initialization arguments to the pkcs11 module",
+		"Specifies additional initialization arguments to the PKCS#11 module",
 		ENGINE_CMD_FLAG_STRING},
 	{0, NULL, NULL, 0}
 };
@@ -210,18 +210,18 @@ static int bind_helper(ENGINE *e)
 #ifndef OPENSSL_NO_RSA
 			!ENGINE_set_RSA(e, PKCS11_get_rsa_method()) ||
 #endif
-#if OPENSSL_VERSION_NUMBER  < 0x10100002L
-#ifndef OPENSSL_NO_ECDSA
-			!ENGINE_set_ECDSA(e, PKCS11_get_ecdsa_method()) ||
- #if defined(BUILD_ECDH_102)
-			!ENGINE_set_ECDH(e, PKCS11_get_ecdh_method()) ||
-#endif /*BUILD_ECDH_102 */
-#endif
-#else /* OPENSSL_VERSION_NUMBER */
+#if OPENSSL_VERSION_NUMBER  >= 0x10100002L
 #ifndef OPENSSL_NO_EC
-			/* PKCS11_get_ec_key_method supports ECDH too */
+			/* PKCS11_get_ec_key_method combines ECDSA and ECDH */
 			!ENGINE_set_EC(e, PKCS11_get_ec_key_method()) ||
 #endif /* OPENSSL_NO_EC */
+#else /* OPENSSL_VERSION_NUMBER */
+#ifndef OPENSSL_NO_ECDSA
+			!ENGINE_set_ECDSA(e, PKCS11_get_ecdsa_method()) ||
+#endif
+#ifndef OPENSSL_NO_ECDH
+			!ENGINE_set_ECDH(e, PKCS11_get_ecdh_method()) ||
+#endif
 #endif /* OPENSSL_VERSION_NUMBER */
 			!ENGINE_set_load_pubkey_function(e, load_pubkey) ||
 			!ENGINE_set_load_privkey_function(e, load_privkey)) {
