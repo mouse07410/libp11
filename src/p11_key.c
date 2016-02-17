@@ -292,11 +292,6 @@ EVP_PKEY *pkcs11_get_key(PKCS11_KEY *key, int isPrivate)
 		if (key->evp_key == NULL)
 			return NULL;
 	}
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	EVP_PKEY_up_ref(key->evp_key);
-#else
-	CRYPTO_add(&key->evp_key->references, 1, CRYPTO_LOCK_EVP_PKEY);
-#endif
 	return key->evp_key;
 }
 
@@ -394,8 +389,6 @@ static int pkcs11_init_key(PKCS11_CTX * ctx, PKCS11_TOKEN * token,
 	PKCS11_keys *keys = (type == CKO_PRIVATE_KEY) ? &tpriv->prv : &tpriv->pub;
 	PKCS11_KEY_private *kpriv;
 	PKCS11_KEY *key, *tmp;
-	char label[256];
-	unsigned char id[256];
 	CK_KEY_TYPE key_type;
 	PKCS11_KEY_ops *ops;
 	size_t size;
@@ -404,7 +397,7 @@ static int pkcs11_init_key(PKCS11_CTX * ctx, PKCS11_TOKEN * token,
 	(void)session;
 
 	size = sizeof(key_type);
-	if (pkcs11_getattr_var(token, obj, CKA_KEY_TYPE, &key_type, &size))
+	if (pkcs11_getattr_var(token, obj, CKA_KEY_TYPE, (CK_BYTE *)&key_type, &size))
 		return -1;
 
 	switch (key_type) {
@@ -438,13 +431,9 @@ static int pkcs11_init_key(PKCS11_CTX * ctx, PKCS11_TOKEN * token,
 	kpriv->object = obj;
 	kpriv->parent = token;
 
-	if (!pkcs11_getattr_s(token, obj, CKA_LABEL, label, sizeof(label)))
-		key->label = OPENSSL_strdup(label);
-	key->id_len = sizeof(id);
-	if (!pkcs11_getattr_var(token, obj, CKA_ID, id, &key->id_len)) {
-		key->id = OPENSSL_malloc(key->id_len);
-		memcpy(key->id, id, key->id_len);
-	}
+	pkcs11_getattr_alloc(token, obj, CKA_LABEL, (CK_BYTE **)&key->label, NULL);
+	key->id_len = 0;
+	pkcs11_getattr_alloc(token, obj, CKA_ID, &key->id, &key->id_len);
 	key->isPrivate = (type == CKO_PRIVATE_KEY);
 
 	/* Initialize internal information */
