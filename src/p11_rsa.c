@@ -29,59 +29,30 @@
 
 static int rsa_ex_index = 0;
 
+#if OPENSSL_VERSION_NUMBER < 0x10100003L
+#define EVP_PKEY_get0_RSA(key) ((key)->pkey.rsa)
+#endif
+
+static RSA *pkcs11_rsa(PKCS11_KEY *key)
+{
+	EVP_PKEY *evp_key = pkcs11_get_key(key, key->isPrivate);
+	if (evp_key == NULL)
+		return NULL;
+	return EVP_PKEY_get0_RSA(evp_key);
+}
+
+/* PKCS#1 v1.5 RSA signature */
+/* TODO: remove this function in libp11 0.5.0 */
 int pkcs11_sign(int type, const unsigned char *m, unsigned int m_len,
 		unsigned char *sigret, unsigned int *siglen, PKCS11_KEY *key)
 {
-	unsigned char *encoded = NULL;
-	int sigsize;
-	int rv;
-
-	sigsize = pkcs11_get_key_size(key);
-
-	if (type == NID_md5_sha1) { /* SSL special case padding */
-		if ((m_len != 36) /* SHA1 + MD5 */ ||
-				((m_len + RSA_PKCS1_PADDING_SIZE) > (unsigned)sigsize)) {
-			return 0; /* the size is wrong */
-		}
-	} else {
-		ASN1_TYPE parameter = { V_ASN1_NULL, { NULL } };
- 		ASN1_STRING digest = { m_len, V_ASN1_OCTET_STRING, (unsigned char *)m, 0 };
-		X509_ALGOR algor = { NULL, &parameter };
-		X509_SIG digest_info = { &algor, &digest };
-		int size;
-		/* Fetch the OID of the algorithm used */
-		if ((algor.algorithm = OBJ_nid2obj(type)) &&
-				(algor.algorithm) &&
-				/* Get the size of the encoded DigestInfo */
-				(size = i2d_X509_SIG(&digest_info, NULL)) &&
-				/* Check that size is compatible with PKCS#11 padding */
-				(size + RSA_PKCS1_PADDING_SIZE <= sigsize) &&
-				(encoded = OPENSSL_malloc(sigsize))) {
-			unsigned char *tmp = encoded;
-			/* Actually do the encoding */
-			i2d_X509_SIG(&digest_info,&tmp);
-			m = encoded;
-			m_len = size;
-		} else {
-			return 0;
-		}
-	}
-
-	rv = pkcs11_private_encrypt(m_len, m, sigret, key, RSA_PKCS1_PADDING);
-
-	if (rv <= 0)
-		rv = 0;
-	else {
-		*siglen = rv;
-		rv = 1;
-	}
-
-	if (encoded != NULL)  /* NULL on SSL case */
-		OPENSSL_free(encoded);
-
-	return rv;
+	RSA *rsa = pkcs11_rsa(key);
+	if (rsa == NULL)
+		return -1;
+	return RSA_sign(type, m, m_len, sigret, siglen, rsa);
 }
 
+/* Setup PKCS#11 mechanisms for encryption/decryption */
 static int pkcs11_mechanism(CK_MECHANISM *mechanism, const int padding)
 {
 	memset(mechanism, 0, sizeof(CK_MECHANISM));
@@ -92,24 +63,18 @@ static int pkcs11_mechanism(CK_MECHANISM *mechanism, const int padding)
 	case RSA_NO_PADDING:
 		mechanism->mechanism = CKM_RSA_X_509;
 		break;
-	case RSA_PKCS1_OAEP_PADDING:
-		mechanism->mechanism = CKM_RSA_PKCS_OAEP;
-		break;
 	case RSA_X931_PADDING:
 		mechanism->mechanism = CKM_RSA_X9_31;
 		break;
-#ifdef RSA_PKCS1_PSS_PADDING
-	case RSA_PKCS1_PSS_PADDING:
-		mechanism->mechanism = CKM_RSA_PKCS_PSS;
-		break;
-#endif
 	default:
-		printf("pkcs11 engine: padding type not supported\n");
+		printf("pkcs11 engine: unsupported padding type\n");
 		return -1;
 	}
 	return 0;
 }
 
+/* RSA private key encryption (also invoked by OpenSSL for signing) */
+/* OpenSSL assumes that the output buffer is always big enough */
 int pkcs11_private_encrypt(int flen,
 		const unsigned char *from, unsigned char *to,
 		PKCS11_KEY *key, int padding)
@@ -119,43 +84,42 @@ int pkcs11_private_encrypt(int flen,
 	PKCS11_KEY_private *kpriv = PRIVKEY(key);
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 	CK_MECHANISM mechanism;
+	CK_ULONG size;
 	int rv;
-	int sigsize;
-	CK_ULONG ck_sigsize;
 
-	sigsize = pkcs11_get_key_size(key);
-	ck_sigsize = sigsize;
-
-	if (padding == RSA_PKCS1_PADDING &&
-			(flen + RSA_PKCS1_PADDING_SIZE) > sigsize) {
-		return -1; /* the size is wrong */
-	}
+	size = pkcs11_get_key_size(key);
 
 	if (pkcs11_mechanism(&mechanism, padding) < 0)
 		return -1;
 
 	pkcs11_w_lock(PRIVSLOT(slot)->lockid);
-	/* API is somewhat fishy here. *siglen is 0 on entry (cleared
-	 * by OpenSSL). The library assumes that the memory passed
-	 * by the caller is always big enough */
-	rv = CRYPTOKI_call(ctx, C_SignInit(spriv->session, &mechanism, kpriv->object)) ||
-		CRYPTOKI_call(ctx,
-			C_Sign(spriv->session, (CK_BYTE *) from, flen, to, &ck_sigsize));
+	/* Try signing first, as applications are more likely to use it */
+	rv = CRYPTOKI_call(ctx,
+		C_SignInit(spriv->session, &mechanism, kpriv->object));
+	if (!rv)
+		rv = CRYPTOKI_call(ctx,
+			C_Sign(spriv->session, (CK_BYTE *)from, flen, to, &size));
+	if (rv == CKR_KEY_FUNCTION_NOT_PERMITTED) {
+		/* OpenSSL may use it for encryption rather than signing */
+		rv = CRYPTOKI_call(ctx,
+			C_EncryptInit(spriv->session, &mechanism, kpriv->object));
+		if (!rv)
+			rv = CRYPTOKI_call(ctx,
+				C_Encrypt(spriv->session, (CK_BYTE *)from, flen, to, &size));
+	}
 	pkcs11_w_unlock(PRIVSLOT(slot)->lockid);
 
 	if (rv) {
-		PKCS11err(PKCS11_F_PKCS11_RSA_SIGN, pkcs11_map_err(rv));
+		PKCS11err(PKCS11_F_PKCS11_RSA_ENCRYPT, pkcs11_map_err(rv));
 		return -1;
 	}
 
-	if ((unsigned)sigsize != ck_sigsize)
-		return -1;
-
-	return sigsize;
+	return size;
 }
 
+/* RSA private key decryption */
 int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *to,
-		PKCS11_KEY * key, int padding)
+		PKCS11_KEY *key, int padding)
 {
 	PKCS11_SLOT *slot = KEY2SLOT(key);
 	PKCS11_CTX *ctx = KEY2CTX(key);
@@ -169,9 +133,11 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 		return -1;
 
 	pkcs11_w_lock(PRIVSLOT(slot)->lockid);
-	rv = CRYPTOKI_call(ctx, C_DecryptInit(spriv->session, &mechanism, kpriv->object)) ||
-		CRYPTOKI_call(ctx,
-			C_Decrypt(spriv->session, (CK_BYTE *) from, (CK_ULONG)flen,
+	rv = CRYPTOKI_call(ctx,
+		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
+	if (!rv)
+		rv = CRYPTOKI_call(ctx,
+			C_Decrypt(spriv->session, (CK_BYTE *)from, size,
 				(CK_BYTE_PTR)to, &size));
 	pkcs11_w_unlock(PRIVSLOT(slot)->lockid);
 
@@ -183,8 +149,9 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	return size;
 }
 
+/* TODO: remove this function in libp11 0.5.0 */
 int pkcs11_verify(int type, const unsigned char *m, unsigned int m_len,
-		unsigned char *signature, unsigned int siglen, PKCS11_KEY * key)
+		unsigned char *signature, unsigned int siglen, PKCS11_KEY *key)
 {
 	(void)type;
 	(void)m;
@@ -201,7 +168,7 @@ int pkcs11_verify(int type, const unsigned char *m, unsigned int m_len,
 /*
  * Get RSA key material
  */
-static RSA *pkcs11_get_rsa(PKCS11_KEY * key)
+static RSA *pkcs11_get_rsa(PKCS11_KEY *key)
 {
 	RSA *rsa;
 	PKCS11_KEY *keys = NULL;
@@ -255,7 +222,7 @@ static RSA *pkcs11_get_rsa(PKCS11_KEY * key)
 /*
  * Build an EVP_PKEY object
  */
-static EVP_PKEY *pkcs11_get_evp_key_rsa(PKCS11_KEY * key)
+static EVP_PKEY *pkcs11_get_evp_key_rsa(PKCS11_KEY *key)
 {
 	EVP_PKEY *pk;
 	RSA *rsa;
@@ -284,31 +251,33 @@ static EVP_PKEY *pkcs11_get_evp_key_rsa(PKCS11_KEY * key)
 	return pk;
 }
 
-int pkcs11_get_key_modulus(PKCS11_KEY * key, BIGNUM **bn)
+/* TODO: remove this function in libp11 0.5.0 */
+int pkcs11_get_key_modulus(PKCS11_KEY *key, BIGNUM **bn)
 {
-	if (pkcs11_getattr_bn(KEY2TOKEN(key), PRIVKEY(key)->object,
-			CKA_MODULUS, bn))
+	RSA *rsa = pkcs11_rsa(key);
+	if (rsa == NULL)
 		return 0;
-	return 1;
+	*bn = BN_dup(rsa->n);
+	return *bn == NULL ? 0 : 1;
 }
 
-int pkcs11_get_key_exponent(PKCS11_KEY * key, BIGNUM **bn)
+/* TODO: remove this function in libp11 0.5.0 */
+int pkcs11_get_key_exponent(PKCS11_KEY *key, BIGNUM **bn)
 {
-	if (pkcs11_getattr_bn(KEY2TOKEN(key), PRIVKEY(key)->object,
-			CKA_PUBLIC_EXPONENT, bn))
+	RSA *rsa = pkcs11_rsa(key);
+	if (rsa == NULL)
 		return 0;
-	return 1;
+	*bn = BN_dup(rsa->e);
+	return *bn == NULL ? 0 : 1;
 }
 
-int pkcs11_get_key_size(PKCS11_KEY * key)
+/* TODO: make this function static in libp11 0.5.0 */
+int pkcs11_get_key_size(PKCS11_KEY *key)
 {
-	BIGNUM *n = NULL;
-	int numbytes = 0;
-	if (key_getattr_bn(key, CKA_MODULUS, &n))
+	RSA *rsa = pkcs11_rsa(key);
+	if (rsa == NULL)
 		return 0;
-	numbytes = BN_num_bytes(n);
-	BN_clear_free(n);
-	return numbytes;
+	return RSA_size(rsa);
 }
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
@@ -331,17 +300,6 @@ static int pkcs11_rsa_priv_enc_method(int flen, const unsigned char *from,
 		return -1;
 	}
 	return PKCS11_private_encrypt(flen, from, to, key, padding);
-}
-
-static int pkcs11_rsa_sign_method(int type, const unsigned char *m, unsigned int m_len,
-		unsigned char *sigret, unsigned int *siglen, const RSA *rsa)
-{
-	PKCS11_KEY *key = RSA_get_ex_data(rsa, rsa_ex_index);
-	if (key == NULL) {
-		PKCS11err(PKCS11_F_PKCS11_RSA_SIGN, PKCS11_ALIEN_KEY);
-		return -1;
-	}
-	return PKCS11_sign(type, m, m_len, sigret, siglen, key);
 }
 
 static void alloc_rsa_ex_index()
@@ -376,10 +334,11 @@ RSA_METHOD *PKCS11_get_rsa_method(void)
 	if (ops == NULL) {
 		alloc_rsa_ex_index();
 		ops = OPENSSL_malloc(sizeof(RSA_METHOD));
+		if (ops == NULL)
+			return NULL;
 		memcpy(ops, RSA_get_default_method(), sizeof(RSA_METHOD));
 		ops->rsa_priv_enc = pkcs11_rsa_priv_enc_method;
 		ops->rsa_priv_dec = pkcs11_rsa_priv_dec_method;
-		ops->rsa_sign = pkcs11_rsa_sign_method;
 	}
 	return ops;
 }
