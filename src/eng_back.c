@@ -36,6 +36,8 @@
 
 struct st_engine_ctx {
 	PKCS11_CTX *pkcs11_ctx;
+	PKCS11_SLOT *slot_list;
+	unsigned int slot_count;
 	/*
 	 * The PIN used for login. Cache for the get_pin function.
 	 * The memory for this PIN is always owned internally,
@@ -123,6 +125,10 @@ ENGINE_CTX *pkcs11_new()
 int pkcs11_finish(ENGINE_CTX *ctx)
 {
 	if (ctx) {
+		if (ctx->slot_list) {
+			PKCS11_release_all_slots(ctx->pkcs11_ctx,
+				ctx->slot_list, ctx->slot_count);
+		}
 		if (ctx->pkcs11_ctx) {
 			PKCS11_CTX_unload(ctx->pkcs11_ctx);
 			PKCS11_CTX_free(ctx->pkcs11_ctx);
@@ -135,9 +141,30 @@ int pkcs11_finish(ENGINE_CTX *ctx)
 	return 1;
 }
 
+static int pkcs11_init_ctx(ENGINE_CTX *ctx, char *mod)
+{
+	/* PKCS11_CTX_load() uses C_GetSlotList() via p11-kit */
+	if (PKCS11_CTX_load(ctx->pkcs11_ctx, mod) < 0) {
+		fprintf(stderr, "Unable to load module %s\n", mod);
+		return 0;
+	}
+	/* PKCS11_enumerate_slots() uses C_GetSlotList() via libp11 */
+	if (PKCS11_enumerate_slots(ctx->pkcs11_ctx,
+			&ctx->slot_list, &ctx->slot_count) < 0) {
+		fprintf(stderr, "Failed to enumerate slots\n");
+		return 0;
+	}
+	if (ctx->verbose) {
+		fprintf(stderr, "Found %u slot%s\n", ctx->slot_count,
+			(ctx->slot_count <= 1) ? "" : "s");
+	}
+	return 1;
+}
+
 int pkcs11_init(ENGINE_CTX *ctx)
 {
 	char *mod = ctx->module;
+	int rv;
 
 	if (mod == NULL)
 		mod = getenv("PKCS11_MODULE_PATH");
@@ -150,11 +177,22 @@ int pkcs11_init(ENGINE_CTX *ctx)
 	}
 
 	PKCS11_CTX_init_args(ctx->pkcs11_ctx, ctx->init_args);
-	if (PKCS11_CTX_load(ctx->pkcs11_ctx, mod) < 0) {
-		fprintf(stderr, "Unable to load module %s\n", mod);
-		return 0;
-	}
-	return 1;
+
+	/* HACK ALERT: This is an ugly workaround for a complex OpenSC bug */
+	/* OpenSC implicitly locks CRYPTO_LOCK_ENGINE during C_GetSlotList() */
+	/* OpenSSL also locks CRYPTO_LOCK_ENGINE in ENGINE_init() */
+	/* The workaround is to temporarily unlock the non-recursive rwlock,
+	   so it does not crash or hang (depending on the implementation) */
+	/* FIXME: This workaround currently does not support OpenSSL 1.1 */
+#if OPENSSL_VERSION_NUMBER < 0x10100004L
+	CRYPTO_w_unlock(CRYPTO_LOCK_ENGINE);
+#endif
+	rv = pkcs11_init_ctx(ctx, mod);
+#if OPENSSL_VERSION_NUMBER < 0x10100004L
+	CRYPTO_w_lock(CRYPTO_LOCK_ENGINE);
+#endif
+
+	return rv;
 }
 
 /******************************************************************************/
@@ -166,12 +204,12 @@ int pkcs11_init(ENGINE_CTX *ctx)
 
 static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 {
-	PKCS11_SLOT *slot_list, *slot;
+	PKCS11_SLOT *slot;
 	PKCS11_SLOT *found_slot = NULL;
 	PKCS11_TOKEN *tok, *match_tok = NULL;
 	PKCS11_CERT *certs, *selected_cert = NULL;
 	X509 *x509;
-	unsigned int slot_count, cert_count, n, m;
+	unsigned int cert_count, n, m;
 	unsigned char cert_id[MAX_VALUE_LEN / 2];
 	size_t cert_id_len = sizeof(cert_id);
 	char *cert_label = NULL;
@@ -226,17 +264,8 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 		}
 	}
 
-	if (PKCS11_enumerate_slots(ctx->pkcs11_ctx, &slot_list, &slot_count) < 0) {
-		fprintf(stderr, "Failed to enumerate slots\n");
-		return NULL;
-	}
-
-	if (ctx->verbose) {
-		fprintf(stderr, "Found %u slot%s\n", slot_count,
-			(slot_count <= 1) ? "" : "s");
-	}
-	for (n = 0; n < slot_count; n++) {
-		slot = slot_list + n;
+	for (n = 0; n < ctx->slot_count; n++) {
+		slot = ctx->slot_list + n;
 		flags[0] = '\0';
 		if (slot->token) {
 			if (!slot->token->initialized)
@@ -295,20 +324,19 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 		fprintf(stderr, "Specified object not found\n");
 		return NULL;
 	} else if (slot_nr == -1) {
-		if (!(slot = PKCS11_find_token(ctx->pkcs11_ctx, slot_list, slot_count))) {
+		if (!(slot = PKCS11_find_token(ctx->pkcs11_ctx,
+				ctx->slot_list, ctx->slot_count))) {
 			fprintf(stderr, "No tokens found\n");
 			return NULL;
 		}
 	} else {
 		fprintf(stderr, "Invalid slot number: %d\n", slot_nr);
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 	tok = slot->token;
 
 	if (tok == NULL) {
 		fprintf(stderr, "Empty token found\n");
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 
@@ -330,7 +358,6 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 
 	if (PKCS11_enumerate_certs(tok, &certs, &cert_count)) {
 		fprintf(stderr, "Unable to enumerate certificates\n");
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 
@@ -358,7 +385,6 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 
 	if (selected_cert == NULL) {
 		fprintf(stderr, "Certificate not found.\n");
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 
@@ -451,13 +477,13 @@ static int pkcs11_login(ENGINE_CTX *ctx, PKCS11_SLOT *slot, PKCS11_TOKEN *tok,
 static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 		UI_METHOD * ui_method, void *callback_data, int isPrivate)
 {
-	PKCS11_SLOT *slot_list, *slot;
+	PKCS11_SLOT *slot;
 	PKCS11_SLOT *found_slot = NULL;
 	PKCS11_TOKEN *tok, *match_tok = NULL;
 	PKCS11_KEY *keys, *selected_key = NULL;
 	PKCS11_CERT *certs;
 	EVP_PKEY *pk;
-	unsigned int slot_count, cert_count, key_count, n, m;
+	unsigned int cert_count, key_count, n, m;
 	unsigned char key_id[MAX_VALUE_LEN / 2];
 	size_t key_id_len = sizeof(key_id);
 	char *key_label = NULL;
@@ -517,17 +543,8 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 		}
 	}
 
-	if (PKCS11_enumerate_slots(ctx->pkcs11_ctx, &slot_list, &slot_count) < 0) {
-		fprintf(stderr, "Failed to enumerate slots\n");
-		return NULL;
-	}
-
-	if (ctx->verbose) {
-		fprintf(stderr, "Found %u slot%s\n", slot_count,
-			(slot_count <= 1) ? "" : "s");
-	}
-	for (n = 0; n < slot_count; n++) {
-		slot = slot_list + n;
+	for (n = 0; n < ctx->slot_count; n++) {
+		slot = ctx->slot_list + n;
 		flags[0] = '\0';
 		if (slot->token) {
 			if (!slot->token->initialized)
@@ -586,20 +603,19 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 		fprintf(stderr, "Specified object not found\n");
 		return NULL;
 	} else if (slot_nr == -1) {
-		if (!(slot = PKCS11_find_token(ctx->pkcs11_ctx, slot_list, slot_count))) {
+		if (!(slot = PKCS11_find_token(ctx->pkcs11_ctx,
+				ctx->slot_list, ctx->slot_count))) {
 			fprintf(stderr, "No tokens found\n");
 			return NULL;
 		}
 	} else {
 		fprintf(stderr, "Invalid slot number: %d\n", slot_nr);
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 	tok = slot->token;
 
 	if (tok == NULL) {
 		fprintf(stderr, "Found empty token\n");
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 	/* The following check is non-critical to ensure interoperability
@@ -608,7 +624,6 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 		fprintf(stderr, "Found uninitialized token\n");
 	if (isPrivate && !tok->userPinSet && !tok->readOnly) {
 		fprintf(stderr, "Found slot without user PIN\n");
-		PKCS11_release_all_slots(ctx->pkcs11_ctx, slot_list, slot_count);
 		return NULL;
 	}
 
