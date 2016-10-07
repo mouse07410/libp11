@@ -209,8 +209,15 @@ static int pkcs11_ecdsa_sign(const unsigned char *msg, unsigned int msg_len,
 	CRYPTO_THREAD_write_lock(PRIVSLOT(slot)->rwlock);
 	rv = CRYPTOKI_call(ctx,
 		C_SignInit(spriv->session, &mechanism, kpriv->object));
-	if (rv == CKR_USER_NOT_LOGGED_IN)
+	if (rv == CKR_USER_NOT_LOGGED_IN) {
 		rv = pkcs11_authenticate(key);
+		if (rv) {
+			PKCS11err(PKCS11_F_PKCS11_EC_KEY_SIGN, pkcs11_map_err(rv));
+			return -1;
+		}
+		rv = CRYPTOKI_call(ctx,
+			C_SignInit(spriv->session, &mechanism, kpriv->object));
+	}
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
 			C_Sign(spriv->session, (CK_BYTE *)msg, msg_len, sigret, &ck_sigsize));
