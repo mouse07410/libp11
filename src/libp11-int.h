@@ -94,11 +94,8 @@ typedef struct pkcs11_key_private {
 	PKCS11_TOKEN *parent;
 	CK_OBJECT_HANDLE object;
 	CK_BBOOL always_authenticate;
-<<<<<<< HEAD
-=======
 	UI_METHOD *ui_method;
 	void *ui_user_data;
->>>>>>> upstream/master
 	unsigned char id[255];
 	size_t id_len;
 	PKCS11_KEY_ops *ops;
