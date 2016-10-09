@@ -99,12 +99,8 @@ int pkcs11_private_encrypt(int flen,
 	/* Try signing first, as applications are more likely to use it */
 	rv = CRYPTOKI_call(ctx,
 		C_SignInit(spriv->session, &mechanism, kpriv->object));
-	if (rv == CKR_USER_NOT_LOGGED_IN) {
+	if (rv == CKR_USER_NOT_LOGGED_IN)
 		rv = pkcs11_authenticate(key);
-		if (rv) return -1;
-		rv = CRYPTOKI_call(ctx,
-			C_SignInit(spriv->session, &mechanism, kpriv->object));
-	}
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
 			C_Sign(spriv->session, (CK_BYTE *)from, flen, to, &size));
@@ -112,12 +108,8 @@ int pkcs11_private_encrypt(int flen,
 		/* OpenSSL may use it for encryption rather than signing */
 		rv = CRYPTOKI_call(ctx,
 			C_EncryptInit(spriv->session, &mechanism, kpriv->object));
-		if (!rv) {
+		if (!rv)
 			rv = pkcs11_authenticate(key);
-			if (rv) return -1;
-			rv = CRYPTOKI_call(ctx,
-				C_SignInit(spriv->session, &mechanism, kpriv->object));
-		}
 		if (!rv)
 			rv = CRYPTOKI_call(ctx,
 				C_Encrypt(spriv->session, (CK_BYTE *)from, flen, to, &size));
