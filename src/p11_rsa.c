@@ -429,7 +429,13 @@ RSA_METHOD *PKCS11_get_rsa_method(void)
 
 	if (ops == NULL) {
 		alloc_rsa_ex_index();
+#if OPENSSL_VERSION_NUMBER >= 0x10100002L
+		ops = RSA_meth_dup(RSA_get_default_method());
+		RSA_meth_set1_name(ops, "libp11 RSA method");
+		RSA_meth_set_flags(ops, 0);
+#else /* we're at OpenSSL 1.0.2 or earlier */
 		ops = RSA_meth_new("libp11 RSA method", 0);
+#endif /* OPENSSL_VERSION_NUMBER points at OpenSSL-1.1.x */
 		if (ops == NULL)
 			return NULL;
 		RSA_meth_set_priv_enc(ops, pkcs11_rsa_priv_enc_method);
