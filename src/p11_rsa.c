@@ -429,6 +429,7 @@ RSA_METHOD *PKCS11_get_rsa_method(void)
 
 	if (ops == NULL) {
 		alloc_rsa_ex_index();
+/* Uri's fix */
 #if OPENSSL_VERSION_NUMBER >= 0x10100002L
 		ops = RSA_meth_dup(RSA_get_default_method());
 		RSA_meth_set1_name(ops, "libp11 RSA method");
