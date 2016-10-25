@@ -36,6 +36,8 @@ AC_PROG_CC
 PKG_PROG_PKG_CONFIG
 AC_C_BIGENDIAN
 
+gl_LD_VERSION_SCRIPT
+
 AC_ARG_WITH(
 	[cygwin-native],
 	[AS_HELP_STRING([--with-cygwin-native],[compile native win32])],
@@ -220,6 +222,32 @@ fi
 if test "${enable_strict}" = "yes"; then
 	CFLAGS="${CFLAGS} -Wall -Wextra"
 fi
+
+rm -f src/libp11.map
+echo "LIBP11_${LIBP11_LT_OLDEST}" > src/libp11.map
+echo "{" >> src/libp11.map
+echo "global:" >> src/libp11.map
+#sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/;\n/g' <src/libp11.exports >>src/libp11.map
+tr '\n' ';''\n' <src/libp11.exports >>src/libp11.map
+echo "" >> src/libp11.map
+echo "local:" >> src/libp11.map
+echo '*;' >> src/libp11.map
+echo "};" >> src/libp11.map
+
+chmod ugo-w src/libp11.map
+
+AC_MSG_CHECKING([if libtool needs -no-undefined flag to build shared libraries])
+case "`uname`" in
+  CYGWIN*|MSYS*|MINGW*|AIX*)
+    ## Add in the -no-undefined flag to LDFLAGS for libtool.
+    AC_MSG_RESULT([yes])
+    LDFLAGS="$LDFLAGS -no-undefined"
+    ;;
+  *)
+    ## Don't add in anything.
+    AC_MSG_RESULT([no])
+    ;;
+esac
 
 AC_CONFIG_FILES([
 	Makefile
