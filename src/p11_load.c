@@ -141,6 +141,7 @@ void pkcs11_CTX_unload(PKCS11_CTX *ctx)
 
 	/* Unload the module */
 	C_UnloadModule(cpriv->handle);
+	cpriv->handle = NULL;
 }
 
 /*
@@ -158,6 +159,11 @@ void pkcs11_CTX_free(PKCS11_CTX *ctx)
 	if (cpriv->init_args) {
 		OPENSSL_free(cpriv->init_args);
 	}
+#if 0
+	if (cpriv->handle) {
+		pkcs11_CTX_unload(ctx);
+	}
+#endif
 	CRYPTO_THREAD_lock_free(cpriv->rwlock);
 	OPENSSL_free(ctx->manufacturer);
 	OPENSSL_free(ctx->description);
