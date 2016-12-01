@@ -161,7 +161,7 @@ void pkcs11_CTX_free(PKCS11_CTX *ctx)
 	}
 
 	if (cpriv->handle) {
-	  OPENSSL_free((struct sc_pkcs11_module {unsigned int _magic;void *handle;} *)cpriv->handle);
+	  OPENSSL_free(cpriv->handle);
 	}
 
 	CRYPTO_THREAD_lock_free(cpriv->rwlock);
