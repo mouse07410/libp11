@@ -3,7 +3,7 @@
  * Copyright (c) 2002 Juha Yrjölä
  * Copyright (c) 2002 Olaf Kirch
  * Copyright (c) 2003 Kevin Stefanik
- * Copyright (c) 2016 Michał Trojnara
+ * Copyright (c) 2017 Michał Trojnara
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,7 +37,7 @@
 struct st_engine_ctx {
 	/* Engine configuration */
 	/*
-	 * The PIN used for login. Cache for the get_pin function.
+	 * The PIN used for login. Cache for the ctx_get_pin function.
 	 * The memory for this PIN is always owned internally,
 	 * and may be freed as necessary. Before freeing, the PIN
 	 * must be whitened, to prevent security holes.
@@ -77,7 +77,7 @@ static void dump_hex(FILE *stream, const char *val, const size_t len) {
 /******************************************************************************/
 
 /* Free PIN storage in secure way. */
-static void destroy_pin(ENGINE_CTX *ctx)
+static void ctx_destroy_pin(ENGINE_CTX *ctx)
 {
 	if (ctx->pin != NULL) {
 		OPENSSL_cleanse(ctx->pin, ctx->pin_length);
@@ -91,7 +91,7 @@ static void destroy_pin(ENGINE_CTX *ctx)
  * passed to the user interface implemented by an application. Only the
  * application knows how to interpret the call-back data.
  * A (strdup'ed) copy of the PIN code will be stored in the pin variable. */
-static int get_pin(ENGINE_CTX *ctx, UI_METHOD *ui_method, void *callback_data)
+static int ctx_get_pin(ENGINE_CTX *ctx, UI_METHOD *ui_method, void *callback_data)
 {
 	UI *ui;
 
@@ -104,7 +104,7 @@ static int get_pin(ENGINE_CTX *ctx, UI_METHOD *ui_method, void *callback_data)
 	if (callback_data != NULL)
 		UI_add_user_data(ui, callback_data);
 
-	destroy_pin(ctx);
+	ctx_destroy_pin(ctx);
 	ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
 	if (ctx->pin == NULL)
 		return 0;
@@ -125,11 +125,67 @@ static int get_pin(ENGINE_CTX *ctx, UI_METHOD *ui_method, void *callback_data)
 	return 1;
 }
 
+/*
+ * Log-into the token if necessary.
+ *
+ * @slot is PKCS11 slot to log in
+ * @tok is PKCS11 token to log in (??? could be derived as @slot->token)
+ * @ui_method is OpenSSL user interface which is used to ask for a password
+ * @callback_data are application data to the user interface
+ * @return 1 on success, 0 on error.
+ */
+static int ctx_login(ENGINE_CTX *ctx, PKCS11_SLOT *slot, PKCS11_TOKEN *tok,
+		UI_METHOD *ui_method, void *callback_data)
+{
+	int already_logged_in = 0;
+
+	if (!tok->loginRequired)
+		return 1;
+
+	/* Check if already logged in to avoid resetting state */
+	if (PKCS11_is_logged_in(slot, 0, &already_logged_in) != 0) {
+		fprintf(stderr, "Unable to check if already logged in\n");
+		return 0;
+	}
+	if (already_logged_in)
+		return 1;
+
+	/* If the token has a secure login (i.e., an external keypad),
+	 * then use a NULL PIN. Otherwise, obtain a new PIN if needed. */
+	if (tok->secureLogin) {
+		/* Free the PIN if it has already been
+		 * assigned (i.e, cached by ctx_get_pin) */
+		ctx_destroy_pin(ctx);
+	} else if (ctx->pin == NULL) {
+		ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
+		ctx->pin_length = MAX_PIN_LENGTH;
+		if (ctx->pin == NULL) {
+			fprintf(stderr, "Could not allocate memory for PIN\n");
+			return 0;
+		}
+		memset(ctx->pin, 0, MAX_PIN_LENGTH+1);
+		if (!ctx_get_pin(ctx, ui_method, callback_data)) {
+			ctx_destroy_pin(ctx);
+			fprintf(stderr, "No PIN code was entered\n");
+			return 0;
+		}
+	}
+
+	/* Now login in with the (possibly NULL) PIN */
+	if (PKCS11_login(slot, 0, ctx->pin)) {
+		/* Login failed, so free the PIN if present */
+		ctx_destroy_pin(ctx);
+		fprintf(stderr, "Login failed\n");
+		return 0;
+	}
+	return 1;
+}
+
 /******************************************************************************/
 /* Initialization and cleanup                                                 */
 /******************************************************************************/
 
-ENGINE_CTX *pkcs11_new()
+ENGINE_CTX *ctx_new()
 {
 	ENGINE_CTX *ctx;
 	char *mod;
@@ -160,12 +216,12 @@ ENGINE_CTX *pkcs11_new()
 	return ctx;
 }
 
-/* Destroy the context allocated with pkcs11_new() */
-int pkcs11_destroy(ENGINE_CTX *ctx)
+/* Destroy the context allocated with ctx_new() */
+int ctx_destroy(ENGINE_CTX *ctx)
 {
 	if (ctx) {
-		pkcs11_finish(ctx);
-		destroy_pin(ctx);
+		ctx_finish(ctx);
+		ctx_destroy_pin(ctx);
 		OPENSSL_free(ctx->module);
 		OPENSSL_free(ctx->init_args);
 #if OPENSSL_VERSION_NUMBER >= 0x10100004L
@@ -180,7 +236,7 @@ int pkcs11_destroy(ENGINE_CTX *ctx)
 }
 
 /* Initialize libp11 data: ctx->pkcs11_ctx and ctx->slot_list */
-static void pkcs11_init_libp11_unlocked(ENGINE_CTX *ctx)
+static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 {
 	PKCS11_CTX *pkcs11_ctx;
 	PKCS11_SLOT *slot_list = NULL;
@@ -216,7 +272,7 @@ static void pkcs11_init_libp11_unlocked(ENGINE_CTX *ctx)
 	ctx->slot_count = slot_count;
 }
 
-static int pkcs11_init_libp11(ENGINE_CTX *ctx)
+static int ctx_init_libp11(ENGINE_CTX *ctx)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100004L
 	CRYPTO_THREAD_write_lock(ctx->rwlock);
@@ -225,7 +281,7 @@ static int pkcs11_init_libp11(ENGINE_CTX *ctx)
 		CRYPTO_w_lock(ctx->rwlock);
 #endif
 	if (ctx->pkcs11_ctx == NULL || ctx->slot_list == NULL)
-		pkcs11_init_libp11_unlocked(ctx);
+		ctx_init_libp11_unlocked(ctx);
 #if OPENSSL_VERSION_NUMBER >= 0x10100004L
 	CRYPTO_THREAD_unlock(ctx->rwlock);
 #else
@@ -236,7 +292,7 @@ static int pkcs11_init_libp11(ENGINE_CTX *ctx)
 }
 
 /* Function called from ENGINE_init() */
-int pkcs11_init(ENGINE_CTX *ctx)
+int ctx_init(ENGINE_CTX *ctx)
 {
 	/* OpenSC implicitly locks CRYPTO_LOCK_ENGINE during C_GetSlotList().
 	 * OpenSSL also locks CRYPTO_LOCK_ENGINE in ENGINE_init().
@@ -251,7 +307,7 @@ int pkcs11_init(ENGINE_CTX *ctx)
 			CRYPTO_get_dynlock_lock_callback() == NULL ||
 			CRYPTO_get_dynlock_destroy_callback() == NULL) {
 		CRYPTO_w_unlock(CRYPTO_LOCK_ENGINE);
-		pkcs11_init_libp11_unlocked(ctx);
+		ctx_init_libp11_unlocked(ctx);
 		CRYPTO_w_lock(CRYPTO_LOCK_ENGINE);
 		return ctx->pkcs11_ctx && ctx->slot_list ? 1 : 0;
 	}
@@ -259,8 +315,8 @@ int pkcs11_init(ENGINE_CTX *ctx)
 	return 1;
 }
 
-/* Finish engine operations initialized with pkcs11_init() */
-int pkcs11_finish(ENGINE_CTX *ctx)
+/* Finish engine operations initialized with ctx_init() */
+int ctx_finish(ENGINE_CTX *ctx)
 {
 	if (ctx) {
 		if (ctx->slot_list) {
@@ -271,7 +327,7 @@ int pkcs11_finish(ENGINE_CTX *ctx)
 		}
 		if (ctx->pkcs11_ctx) {
 			/* Modules cannot be unloaded in pkcs11_finish() nor
-			 * pkcs11_destroy() because of a deadlock in PKCS#11
+			 * ctx_destroy() because of a deadlock in PKCS#11
 			 * modules that internally use OpenSSL engines.
 			 * A memory leak is better than a deadlock... */
 			/* PKCS11_CTX_unload(ctx->pkcs11_ctx); */
@@ -289,7 +345,8 @@ int pkcs11_finish(ENGINE_CTX *ctx)
 /* prototype for OpenSSL ENGINE_load_cert */
 /* used by load_cert_ctrl via ENGINE_ctrl for now */
 
-static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
+static X509 *ctx_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id,
+		const int login)
 {
 	PKCS11_SLOT *slot;
 	PKCS11_SLOT *found_slot = NULL;
@@ -305,7 +362,7 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 	int slot_nr = -1;
 	char flags[64];
 
-	if (pkcs11_init_libp11(ctx)) /* Delayed libp11 initialization */
+	if (ctx_init_libp11(ctx)) /* Delayed libp11 initialization */
 		return NULL;
 
 	if (s_slot_cert_id && *s_slot_cert_id) {
@@ -314,7 +371,7 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 				cert_id, &cert_id_len,
 				tmp_pin, &tmp_pin_len, &cert_label);
 			if (n && tmp_pin_len > 0 && tmp_pin[0] != 0) {
-				destroy_pin(ctx);
+				ctx_destroy_pin(ctx);
 				ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
 				if (ctx->pin != NULL) {
 					memset(ctx->pin, 0, MAX_PIN_LENGTH+1);
@@ -438,15 +495,11 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 		fprintf(stderr, "Found token: %s\n", slot->token->label);
 	}
 
-	/* In several tokens certificates are marked as private. We use the pin-value */
-	if (tok->loginRequired && ctx->pin) {
-		/* Now login in with the (possibly NULL) pin */
-		if (PKCS11_login(slot, 0, ctx->pin)) {
-			/* Login failed, so free the PIN if present */
-			destroy_pin(ctx);
-			fprintf(stderr, "Login failed\n");
-			return NULL;
-		}
+	/* In several tokens certificates are marked as private.
+	 * We require a cached pin, as no UI method is available. */
+	if (login && ctx->pin && !ctx_login(ctx, slot, tok, NULL, NULL)) {
+		fprintf(stderr, "Login to token failed, returning NULL...\n");
+		return NULL;
 	}
 
 	if (PKCS11_enumerate_certs(tok, &certs, &cert_count)) {
@@ -484,7 +537,7 @@ static X509 *pkcs11_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id)
 	return x509;
 }
 
-static int ctrl_load_cert(ENGINE_CTX *ctx, void *p)
+static int ctx_ctrl_load_cert(ENGINE_CTX *ctx, void *p)
 {
 	struct {
 		const char *s_slot_cert_id;
@@ -494,10 +547,12 @@ static int ctrl_load_cert(ENGINE_CTX *ctx, void *p)
 	if (parms->cert != NULL)
 		return 0;
 
-	parms->cert = pkcs11_load_cert(ctx, parms->s_slot_cert_id);
+	parms->cert = ctx_load_cert(ctx, parms->s_slot_cert_id, 0);
+	if (parms->cert == NULL) /* Try again with login */
+		parms->cert = ctx_load_cert(ctx, parms->s_slot_cert_id, 1);
+
 	if (parms->cert == NULL)
 		return 0;
-
 	return 1;
 }
 
@@ -505,67 +560,9 @@ static int ctrl_load_cert(ENGINE_CTX *ctx, void *p)
 /* Private and public key handling                                            */
 /******************************************************************************/
 
-/*
- * Log-into the token if necesary.
- *
- * @slot is PKCS11 slot to log in
- * @tok is PKCS11 token to log in (??? could be derived as @slot->token)
- * @ui_method is OpenSSL user inteface which is used to ask for a password
- * @callback_data are application data to the user interface
- * @return 1 on success, 0 on error.
- */
-static int pkcs11_login(ENGINE_CTX *ctx, PKCS11_SLOT *slot, PKCS11_TOKEN *tok,
-		UI_METHOD *ui_method, void *callback_data)
-{
-	if (tok->loginRequired) {
-		/* If the token has a secure login (i.e., an external keypad),
-		 * then use a NULL pin. Otherwise, check if a PIN exists. If
-		 * not, allocate and obtain a new PIN. */
-		if (tok->secureLogin) {
-			/* Free the PIN if it has already been
-			 * assigned (i.e, cached by get_pin) */
-			destroy_pin(ctx);
-		} else if (ctx->pin == NULL) {
-			ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
-			ctx->pin_length = MAX_PIN_LENGTH;
-			if (ctx->pin == NULL) {
-				fprintf(stderr, "Could not allocate memory for PIN");
-				return 0;
-			}
-			memset(ctx->pin, 0, MAX_PIN_LENGTH+1);
-			if (!get_pin(ctx, ui_method, callback_data)) {
-				destroy_pin(ctx);
-				fprintf(stderr, "No pin code was entered");
-				return 0;
-			}
-		}
-
-		/* Now login in with the (possibly NULL) pin */
-		if (PKCS11_login(slot, 0, ctx->pin)) {
-			/* Login failed, so free the PIN if present */
-			destroy_pin(ctx);
-			fprintf(stderr, "Login failed\n");
-			return 0;
-		}
-		/* Login successful, PIN retained in case further logins are
-		 * required. This will occur on subsequent calls to the
-		 * pkcs11_load_key function. Subsequent login calls should be
-		 * relatively fast (the token should maintain its own login
-		 * state), although there may still be a slight performance
-		 * penalty. We could maintain state noting that successful
-		 * login has been performed, but this state may not be updated
-		 * if the token is removed and reinserted between calls. It
-		 * seems safer to retain the PIN and perform a login on each
-		 * call to pkcs11_load_key, even if this may not be strictly
-		 * necessary. */
-		/* TODO confirm that multiple login attempts do not introduce
-		 * significant performance penalties */
-	}
-	return 1;
-}
-
-static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
-		UI_METHOD *ui_method, void *callback_data, int isPrivate)
+static EVP_PKEY *ctx_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
+		UI_METHOD *ui_method, void *callback_data,
+		const int isPrivate, const int login)
 {
 	PKCS11_SLOT *slot;
 	PKCS11_SLOT *found_slot = NULL;
@@ -581,9 +578,8 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 	char tmp_pin[MAX_PIN_LENGTH+1];
 	size_t tmp_pin_len = MAX_PIN_LENGTH;
 	char flags[64];
-	int already_logged_in = 0;
 
-	if (pkcs11_init_libp11(ctx)) /* Delayed libp11 initialization */
+	if (ctx_init_libp11(ctx)) /* Delayed libp11 initialization */
 		return NULL;
 
 	if (ctx->verbose)
@@ -597,7 +593,7 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 				tmp_pin, &tmp_pin_len, &key_label);
 
 			if (n && tmp_pin_len > 0 && tmp_pin[0] != 0) {
-				destroy_pin(ctx);
+				ctx_destroy_pin(ctx);
 				ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
 				if (ctx->pin != NULL) {
 					memset(ctx->pin, 0, MAX_PIN_LENGTH+1);
@@ -754,17 +750,14 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 		}
 	}
 
+	/* Both private and public keys can have the CKA_PRIVATE attribute
+	 * set and thus require login (even to retrieve attributes!) */
+	if (login && !ctx_login(ctx, slot, tok, ui_method, callback_data)) {
+		fprintf(stderr, "Login to token failed, returning NULL...\n");
+		return NULL;
+	}
+
 	if (isPrivate) {
-		/* Check if already logged in to avoid resetting state */
-		if (PKCS11_is_logged_in(slot, 0, &already_logged_in) != 0) {
-			fprintf(stderr, "Unable to check if already logged in\n");
-			return NULL;
-		}
-		/* Perform login to the token if required */
-		if (!already_logged_in && !pkcs11_login(ctx, slot, tok, ui_method, callback_data)) {
-			fprintf(stderr, "login to token failed, returning NULL...\n");
-			return NULL;
-		}
 		/* Make sure there is at least one private key on the token */
 		if (PKCS11_enumerate_keys(tok, &keys, &key_count)) {
 			fprintf(stderr, "Unable to enumerate private keys\n");
@@ -822,12 +815,14 @@ static EVP_PKEY *pkcs11_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 	return pk;
 }
 
-EVP_PKEY *pkcs11_load_public_key(ENGINE_CTX *ctx, const char *s_key_id,
+EVP_PKEY *ctx_load_pubkey(ENGINE_CTX *ctx, const char *s_key_id,
 		UI_METHOD *ui_method, void *callback_data)
 {
 	EVP_PKEY *pk;
 
-	pk = pkcs11_load_key(ctx, s_key_id, ui_method, callback_data, 0);
+	pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 0, 0);
+	if (pk == NULL) /* Try again with login */
+		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 0, 1);
 	if (pk == NULL) {
 		fprintf(stderr, "PKCS11_load_public_key returned NULL\n");
 		return NULL;
@@ -835,12 +830,14 @@ EVP_PKEY *pkcs11_load_public_key(ENGINE_CTX *ctx, const char *s_key_id,
 	return pk;
 }
 
-EVP_PKEY *pkcs11_load_private_key(ENGINE_CTX *ctx, const char *s_key_id,
+EVP_PKEY *ctx_load_privkey(ENGINE_CTX *ctx, const char *s_key_id,
 		UI_METHOD *ui_method, void *callback_data)
 {
 	EVP_PKEY *pk;
 
-	pk = pkcs11_load_key(ctx, s_key_id, ui_method, callback_data, 1);
+	pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 1, 0);
+	if (pk == NULL) /* Try again with login */
+		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 1, 1);
 	if (pk == NULL) {
 		fprintf(stderr, "PKCS11_get_private_key returned NULL\n");
 		return NULL;
@@ -852,7 +849,7 @@ EVP_PKEY *pkcs11_load_private_key(ENGINE_CTX *ctx, const char *s_key_id,
 /* Engine ctrl request handling                                               */
 /******************************************************************************/
 
-static int ctrl_set_module(ENGINE_CTX *ctx, const char *modulename)
+static int ctx_ctrl_set_module(ENGINE_CTX *ctx, const char *modulename)
 {
 	OPENSSL_free(ctx->module);
 	ctx->module = modulename ? OPENSSL_strdup(modulename) : NULL;
@@ -872,7 +869,7 @@ static int ctrl_set_module(ENGINE_CTX *ctx, const char *modulename)
  *
  * @return 1 on success, 0 on failure.
  */
-static int ctrl_set_pin(ENGINE_CTX *ctx, const char *pin)
+static int ctx_ctrl_set_pin(ENGINE_CTX *ctx, const char *pin)
 {
 	/* Pre-condition check */
 	if (pin == NULL) {
@@ -882,7 +879,7 @@ static int ctrl_set_pin(ENGINE_CTX *ctx, const char *pin)
 
 	/* Copy the PIN. If the string cannot be copied, NULL
 	 * shall be returned and errno shall be set. */
-	destroy_pin(ctx);
+	ctx_destroy_pin(ctx);
 	ctx->pin = OPENSSL_strdup(pin);
 	if (ctx->pin != NULL)
 		ctx->pin_length = strlen(ctx->pin);
@@ -890,35 +887,35 @@ static int ctrl_set_pin(ENGINE_CTX *ctx, const char *pin)
 	return ctx->pin != NULL;
 }
 
-static int ctrl_inc_verbose(ENGINE_CTX *ctx)
+static int ctx_ctrl_inc_verbose(ENGINE_CTX *ctx)
 {
 	ctx->verbose++;
 	return 1;
 }
 
-static int ctrl_set_init_args(ENGINE_CTX *ctx, const char *init_args_orig)
+static int ctx_ctrl_set_init_args(ENGINE_CTX *ctx, const char *init_args_orig)
 {
 	OPENSSL_free(ctx->init_args);
 	ctx->init_args = init_args_orig ? OPENSSL_strdup(init_args_orig) : NULL;
 	return 1;
 }
 
-int pkcs11_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
+int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 {
 	(void)i; /* We don't currently take integer parameters */
 	(void)f; /* We don't currently take callback parameters */
 	/*int initialised = ((pkcs11_dso == NULL) ? 0 : 1); */
 	switch (cmd) {
 	case CMD_MODULE_PATH:
-		return ctrl_set_module(ctx, (const char *)p);
+		return ctx_ctrl_set_module(ctx, (const char *)p);
 	case CMD_PIN:
-		return ctrl_set_pin(ctx, (const char *)p);
+		return ctx_ctrl_set_pin(ctx, (const char *)p);
 	case CMD_VERBOSE:
-		return ctrl_inc_verbose(ctx);
+		return ctx_ctrl_inc_verbose(ctx);
 	case CMD_LOAD_CERT_CTRL:
-		return ctrl_load_cert(ctx, p);
+		return ctx_ctrl_load_cert(ctx, p);
 	case CMD_INIT_ARGS:
-		return ctrl_set_init_args(ctx, (const char *)p);
+		return ctx_ctrl_set_init_args(ctx, (const char *)p);
 	default:
 		break;
 	}
