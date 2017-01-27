@@ -5,7 +5,7 @@ AC_PREREQ(2.60)
 # When bumping versions see also the LT vesion numbers below.
 define([PACKAGE_VERSION_MAJOR], [0])
 define([PACKAGE_VERSION_MINOR], [4])
-define([PACKAGE_VERSION_FIX], [4])
+define([PACKAGE_VERSION_FIX], [5])
 define([PACKAGE_SUFFIX], [_git])
 
 AC_INIT([libp11],[PACKAGE_VERSION_MAJOR.PACKAGE_VERSION_MINOR.PACKAGE_VERSION_FIX[]PACKAGE_SUFFIX])
@@ -53,7 +53,7 @@ esac
 # the openssl version we link to. If the ABI is broken on a later
 # release, we should either stick to supporting a single openssl ABI
 # or bump the LT_OLDEST version sufficiently to avoid clashes.
-LIBP11_LT_REVISION="3"
+LIBP11_LT_REVISION="4"
 LIBP11_LT_CURRENT="6"
 LIBP11_LT_AGE="$((${LIBP11_LT_CURRENT}-${LIBP11_LT_OLDEST}))"
 
