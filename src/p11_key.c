@@ -38,15 +38,15 @@ static int pkcs11_init_key(PKCS11_CTX *ctx, PKCS11_TOKEN *token,
 static int pkcs11_store_key(PKCS11_TOKEN *, EVP_PKEY *, unsigned int,
 	char *, unsigned char *, size_t, PKCS11_KEY **);
 
-/* Set UI method to allow retrieving PIN values interactively */
-int pkcs11_set_ui_method(PKCS11_KEY *key,
+/* Set UI method to allow retrieving CKU_CONTEXT_SPECIFIC PINs interactively */
+int pkcs11_set_ui_method(PKCS11_CTX *ctx,
 		UI_METHOD *ui_method, void *ui_user_data)
 {
-	PKCS11_KEY_private *kpriv = PRIVKEY(key);
-	if (kpriv == NULL)
+	PKCS11_CTX_private *cpriv = PRIVCTX(ctx);
+	if (cpriv == NULL)
 		return -1;
-	kpriv->ui_method = ui_method;
-	kpriv->ui_user_data = ui_user_data;
+	cpriv->ui_method = ui_method;
+	cpriv->ui_user_data = ui_user_data;
 	return 0;
 }
 
@@ -138,7 +138,7 @@ int pkcs11_generate_key(PKCS11_TOKEN *token, int algorithm, unsigned int bits,
 	EVP_PKEY *pk;
 	RSA *rsa;
 	BIO *err;
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
 	BIGNUM *exp = NULL;
 	BN_GENCB *gencb = NULL;
 #endif
@@ -151,7 +151,7 @@ int pkcs11_generate_key(PKCS11_TOKEN *token, int algorithm, unsigned int bits,
 
 	err = BIO_new_fp(stderr, BIO_NOCLOSE);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
 	exp = BN_new();
 	rsa = RSA_new();
 	gencb = BN_GENCB_new();
@@ -247,7 +247,7 @@ static int pkcs11_store_key(PKCS11_TOKEN *token, EVP_PKEY *pk,
 		pkcs11_addattr_bool(attrs + n++, CKA_VERIFY, TRUE);
 		pkcs11_addattr_bool(attrs + n++, CKA_WRAP, TRUE);
 	}
-#if OPENSSL_VERSION_NUMBER >= 0x10100003L
+#if OPENSSL_VERSION_NUMBER >= 0x10100003L && !defined(LIBRESSL_VERSION_NUMBER)
 	if (EVP_PKEY_base_id(pk) == EVP_PKEY_RSA) {
 		RSA *rsa = EVP_PKEY_get1_RSA(pk);
 #else
@@ -255,7 +255,7 @@ static int pkcs11_store_key(PKCS11_TOKEN *token, EVP_PKEY *pk,
 		RSA *rsa = pk->pkey.rsa;
 #endif
 		pkcs11_addattr_int(attrs + n++, CKA_KEY_TYPE, CKK_RSA);
-#if OPENSSL_VERSION_NUMBER >= 0x10100005L
+#if OPENSSL_VERSION_NUMBER >= 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
 		RSA_get0_key(rsa, &rsa_n, &rsa_e, &rsa_d);
 		RSA_get0_factors(rsa, &rsa_p, &rsa_q);
 #else
@@ -325,7 +325,7 @@ EVP_PKEY *pkcs11_get_key(PKCS11_KEY *key, int isPrivate)
 				fprintf(stderr, "Missing CKA_ALWAYS_AUTHENTICATE attribute\n");
 		}
 	}
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
 	EVP_PKEY_up_ref(key->evp_key);
 #else
 	CRYPTO_add(&key->evp_key->references, 1, CRYPTO_LOCK_EVP_PKEY);
@@ -343,6 +343,7 @@ int pkcs11_authenticate(PKCS11_KEY *key)
 	PKCS11_SLOT *slot = TOKEN2SLOT(token);
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 	PKCS11_CTX *ctx = SLOT2CTX(slot);
+	PKCS11_CTX_private *cpriv = PRIVCTX(ctx);
 	char pin[MAX_PIN_LENGTH+1];
 	UI *ui;
 	int rv;
@@ -355,11 +356,11 @@ int pkcs11_authenticate(PKCS11_KEY *key)
 	}
 
 	/* Call UI to ask for a PIN */
-	ui = UI_new_method(kpriv->ui_method);
+	ui = UI_new_method(cpriv->ui_method);
 	if (ui == NULL)
 		return PKCS11_UI_FAILED;
-	if (kpriv->ui_user_data != NULL)
-		UI_add_user_data(ui, kpriv->ui_user_data);
+	if (cpriv->ui_user_data != NULL)
+		UI_add_user_data(ui, cpriv->ui_user_data);
 	memset(pin, 0, MAX_PIN_LENGTH+1);
 	if (!UI_add_input_string(ui, "PKCS#11 key PIN: ",
 			UI_INPUT_FLAG_DEFAULT_PWD, pin, 4, MAX_PIN_LENGTH)) {

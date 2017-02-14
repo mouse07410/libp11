@@ -281,8 +281,8 @@ extern PKCS11_KEY *PKCS11_find_key_from_key(PKCS11_KEY *);
 /* Get a list of all certificates associated with this token */
 extern int PKCS11_enumerate_certs(PKCS11_TOKEN *, PKCS11_CERT **, unsigned int *);
 
-/* Set UI method to allow retrieving PIN values interactively */
-extern int PKCS11_set_ui_method(PKCS11_KEY *key,
+/* Set UI method to allow retrieving CKU_CONTEXT_SPECIFIC PINs interactively */
+extern int PKCS11_set_ui_method(PKCS11_CTX *ctx,
 	UI_METHOD *ui_method, void *ui_user_data);
 
 /**
@@ -370,7 +370,7 @@ extern int PKCS11_generate_random(PKCS11_SLOT *slot, unsigned char *r, unsigned 
  */
 RSA_METHOD *PKCS11_get_rsa_method(void);
 /* Also define unsupported methods to retain backward compatibility */
-#if OPENSSL_VERSION_NUMBER >= 0x10100002L
+#if OPENSSL_VERSION_NUMBER >= 0x10100002L && !defined(LIBRESSL_VERSION_NUMBER)
 EC_KEY_METHOD *PKCS11_get_ec_key_method(void);
 void *PKCS11_get_ecdsa_method(void);
 void *PKCS11_get_ecdh_method(void);

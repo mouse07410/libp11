@@ -47,9 +47,11 @@ struct st_engine_ctx {
 	int verbose;
 	char *module;
 	char *init_args;
+	UI_METHOD *ui_method;
+	void *callback_data;
 
 	/* Engine initialization mutex */
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
+#if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 	CRYPTO_RWLOCK *rwlock;
 #else
 	int rwlock;
@@ -206,7 +208,7 @@ ENGINE_CTX *ctx_new()
 #endif
 	}
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
+#if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 	ctx->rwlock = CRYPTO_THREAD_lock_new();
 #else
 	ctx->rwlock = CRYPTO_get_dynlock_create_callback() ?
@@ -224,7 +226,7 @@ int ctx_destroy(ENGINE_CTX *ctx)
 		ctx_destroy_pin(ctx);
 		OPENSSL_free(ctx->module);
 		OPENSSL_free(ctx->init_args);
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
+#if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 		CRYPTO_THREAD_lock_free(ctx->rwlock);
 #else
 		if (ctx->rwlock)
@@ -247,6 +249,7 @@ static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 
 	pkcs11_ctx = PKCS11_CTX_new();
 	PKCS11_CTX_init_args(pkcs11_ctx, ctx->init_args);
+	PKCS11_set_ui_method(pkcs11_ctx, ctx->ui_method, ctx->callback_data);
 
 	/* PKCS11_CTX_load() uses C_GetSlotList() via p11-kit */
 	if (PKCS11_CTX_load(pkcs11_ctx, ctx->module) < 0) {
@@ -274,7 +277,7 @@ static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 
 static int ctx_init_libp11(ENGINE_CTX *ctx)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
+#if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 	CRYPTO_THREAD_write_lock(ctx->rwlock);
 #else
 	if (ctx->rwlock)
@@ -282,7 +285,7 @@ static int ctx_init_libp11(ENGINE_CTX *ctx)
 #endif
 	if (ctx->pkcs11_ctx == NULL || ctx->slot_list == NULL)
 		ctx_init_libp11_unlocked(ctx);
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
+#if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 	CRYPTO_THREAD_unlock(ctx->rwlock);
 #else
 	if (ctx->rwlock)
@@ -302,7 +305,7 @@ int ctx_init(ENGINE_CTX *ctx)
 	/* Only attempt initialization when dynamic locks are unavailable.
 	 * This likely also indicates a single-threaded application,
 	 * so temporarily unlocking CRYPTO_LOCK_ENGINE should be safe. */
-#if OPENSSL_VERSION_NUMBER < 0x10100004L
+#if OPENSSL_VERSION_NUMBER < 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
 	if (CRYPTO_get_dynlock_create_callback() == NULL ||
 			CRYPTO_get_dynlock_lock_callback() == NULL ||
 			CRYPTO_get_dynlock_destroy_callback() == NULL) {
@@ -495,9 +498,9 @@ static X509 *ctx_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id,
 		fprintf(stderr, "Found token: %s\n", slot->token->label);
 	}
 
-	/* In several tokens certificates are marked as private.
-	 * We require a cached pin, as no UI method is available. */
-	if (login && ctx->pin && !ctx_login(ctx, slot, tok, NULL, NULL)) {
+	/* In several tokens certificates are marked as private */
+	if (login && !ctx_login(ctx, slot, tok,
+			ctx->ui_method, ctx->callback_data)) {
 		fprintf(stderr, "Login to token failed, returning NULL...\n");
 		return NULL;
 	}
@@ -902,6 +905,18 @@ static int ctx_ctrl_set_init_args(ENGINE_CTX *ctx, const char *init_args_orig)
 	return 1;
 }
 
+static int ctx_ctrl_set_user_interface(ENGINE_CTX *ctx, UI_METHOD *ui_method)
+{
+	ctx->ui_method = ui_method;
+	return 1;
+}
+
+static int ctx_ctrl_set_callback_data(ENGINE_CTX *ctx, void *callback_data)
+{
+	ctx->callback_data = callback_data;
+	return 1;
+}
+
 int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 {
 	(void)i; /* We don't currently take integer parameters */
@@ -918,6 +933,12 @@ int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 		return ctx_ctrl_load_cert(ctx, p);
 	case CMD_INIT_ARGS:
 		return ctx_ctrl_set_init_args(ctx, (const char *)p);
+	case ENGINE_CTRL_SET_USER_INTERFACE:
+	case CMD_SET_USER_INTERFACE:
+		return ctx_ctrl_set_user_interface(ctx, (UI_METHOD *)p);
+	case ENGINE_CTRL_SET_CALLBACK_DATA:
+	case CMD_SET_CALLBACK_DATA:
+		return ctx_ctrl_set_callback_data(ctx, p);
 	default:
 		break;
 	}
