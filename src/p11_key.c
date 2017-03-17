@@ -139,8 +139,8 @@ int pkcs11_generate_key(PKCS11_TOKEN *token, int algorithm, unsigned int bits,
 	RSA *rsa;
 	BIO *err;
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
-	BIGNUM *exp = NULL;
-	BN_GENCB *gencb = NULL;
+	BIGNUM *exp;
+	BN_GENCB *gencb;
 #endif
 	int rc;
 
@@ -156,15 +156,15 @@ int pkcs11_generate_key(PKCS11_TOKEN *token, int algorithm, unsigned int bits,
 	rsa = RSA_new();
 	gencb = BN_GENCB_new();
 	if (gencb)
-	    BN_GENCB_set(gencb, NULL, err);
-
-	if ( rsa == NULL  || exp == NULL || gencb == NULL
-	    || !BN_set_word(exp, RSA_F4) || !RSA_generate_key_ex(rsa, bits, exp, gencb)) {
+		BN_GENCB_set(gencb, NULL, err);
+	if (rsa == NULL || exp == NULL || gencb == NULL ||
+			!BN_set_word(exp, RSA_F4) ||
+			!RSA_generate_key_ex(rsa, bits, exp, gencb)) {
 		RSA_free(rsa);
+		rsa = NULL;
 	}
 	BN_GENCB_free(gencb);
 	BN_free(exp);
-
 #else
 	rsa = RSA_generate_key(bits, RSA_F4, NULL, err);
 #endif
@@ -338,7 +338,6 @@ EVP_PKEY *pkcs11_get_key(PKCS11_KEY *key, int isPrivate)
  */
 int pkcs11_authenticate(PKCS11_KEY *key)
 {
-	PKCS11_KEY_private *kpriv = PRIVKEY(key);
 	PKCS11_TOKEN *token = KEY2TOKEN(key);
 	PKCS11_SLOT *slot = TOKEN2SLOT(token);
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
@@ -422,9 +421,7 @@ static int pkcs11_find_keys(PKCS11_TOKEN *token, unsigned int type)
 {
 	PKCS11_SLOT *slot = TOKEN2SLOT(token);
 	PKCS11_CTX *ctx = TOKEN2CTX(token);
-	PKCS11_TOKEN_private *tpriv = PRIVTOKEN(token);
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
-	PKCS11_keys *keys = (type == CKO_PRIVATE_KEY) ? &tpriv->prv : &tpriv->pub;
 	CK_OBJECT_CLASS key_search_class;
 	CK_ATTRIBUTE key_search_attrs[1] = {
 		{CKA_CLASS, &key_search_class, sizeof(key_search_class)},
