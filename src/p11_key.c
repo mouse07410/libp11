@@ -344,6 +344,7 @@ int pkcs11_authenticate(PKCS11_KEY *key)
 	PKCS11_CTX *ctx = SLOT2CTX(slot);
 	PKCS11_CTX_private *cpriv = PRIVCTX(ctx);
 	char pin[MAX_PIN_LENGTH+1];
+	char* prompt;
 	UI *ui;
 	int rv;
 
@@ -361,11 +362,18 @@ int pkcs11_authenticate(PKCS11_KEY *key)
 	if (cpriv->ui_user_data != NULL)
 		UI_add_user_data(ui, cpriv->ui_user_data);
 	memset(pin, 0, MAX_PIN_LENGTH+1);
-	if (!UI_add_input_string(ui, "PKCS#11 key PIN: ",
-			UI_INPUT_FLAG_DEFAULT_PWD, pin, 4, MAX_PIN_LENGTH)) {
-		UI_free(ui);
+	prompt = UI_construct_prompt(ui, "PKCS#11 key PIN", key->label);
+	if (!prompt) {
 		return PKCS11_UI_FAILED;
 	}
+	if (!UI_dup_input_string(ui, prompt,
+			UI_INPUT_FLAG_DEFAULT_PWD, pin, 4, MAX_PIN_LENGTH)) {
+		UI_free(ui);
+		OPENSSL_free(prompt);
+		return PKCS11_UI_FAILED;
+	}
+	OPENSSL_free(prompt);
+
 	if (UI_process(ui)) {
 		UI_free(ui);
 		return PKCS11_UI_FAILED;
@@ -393,7 +401,9 @@ int pkcs11_enumerate_keys(PKCS11_TOKEN *token, unsigned int type,
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 	PKCS11_CTX_private *cpriv = PRIVCTX(ctx);
 	PKCS11_keys *keys = (type == CKO_PRIVATE_KEY) ? &tpriv->prv : &tpriv->pub;
+	PKCS11_KEY *first_key_prev = keys->keys;
 	int rv;
+	int i;
 
 	/* Make sure we have a session */
 	if (!spriv->haveSession && PKCS11_open_session(slot, 0))
@@ -405,6 +415,15 @@ int pkcs11_enumerate_keys(PKCS11_TOKEN *token, unsigned int type,
 	if (rv < 0) {
 		pkcs11_destroy_keys(token, type);
 		return -1;
+	}
+
+	/* Always update key references if the keys pointer changed */
+	if (first_key_prev != NULL && first_key_prev != keys->keys) {
+		for (i = 0; i < keys->num; ++i) {
+			PKCS11_KEY *key = keys->keys + i;
+			PKCS11_KEY_private *kpriv = PRIVKEY(key);
+			kpriv->ops->update_ex_data(key);
+		}
 	}
 
 	if (keyp)

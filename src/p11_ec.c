@@ -240,6 +240,28 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	return ec;
 }
 
+static void pkcs11_set_ex_data_ec(EC_KEY* ec, PKCS11_KEY* key)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
+	EC_KEY_set_ex_data(ec, ec_ex_index, key);
+#else
+	ECDSA_set_ex_data(ec, ec_ex_index, key);
+#endif
+}
+
+static void pkcs11_update_ex_data_ec(PKCS11_KEY* key)
+{
+	EVP_PKEY* evp = key->evp_key;
+	if (evp == NULL)
+		return;
+	if (EVP_PKEY_base_id(evp) != EVP_PKEY_EC)
+		return;
+
+	EC_KEY* ec = EVP_PKEY_get1_EC_KEY(evp);
+	pkcs11_set_ex_data_ec(ec, key);
+	EC_KEY_free(ec);
+}
+
 /*
  * Get EC key material and stash pointer in ex_data
  * Note we get called twice, once for private key, and once for public
@@ -275,11 +297,7 @@ static EVP_PKEY *pkcs11_get_evp_key_ec(PKCS11_KEY *key)
 	/* TODO: Retrieve the ECDSA private key object attributes instead,
 	 * unless the key has the "sensitive" attribute set */
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
-	EC_KEY_set_ex_data(ec, ec_ex_index, key);
-#else
-	ECDSA_set_ex_data(ec, ec_ex_index, key);
-#endif
+	pkcs11_set_ex_data_ec(ec, key);
 	EC_KEY_free(ec); /* Drops our reference to it */
 	return pk;
 }
@@ -691,7 +709,8 @@ ECDH_METHOD *PKCS11_get_ecdh_method(void)
 
 PKCS11_KEY_ops pkcs11_ec_ops_s = {
 	EVP_PKEY_EC,
-	pkcs11_get_evp_key_ec
+	pkcs11_get_evp_key_ec,
+	pkcs11_update_ex_data_ec,
 };
 PKCS11_KEY_ops *pkcs11_ec_ops = {&pkcs11_ec_ops_s};
 
