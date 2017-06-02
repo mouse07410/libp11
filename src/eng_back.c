@@ -49,6 +49,7 @@ struct st_engine_ctx {
 	char *init_args;
 	UI_METHOD *ui_method;
 	void *callback_data;
+	int force_login;
 
 	/* Engine initialization mutex */
 #if OPENSSL_VERSION_NUMBER >= 0x10100004L && !defined(LIBRESSL_VERSION_NUMBER)
@@ -135,6 +136,18 @@ static int ctx_get_pin(ENGINE_CTX *ctx, const char* token_label, UI_METHOD *ui_m
 	return 1;
 }
 
+/* Return 1 if the user has already logged in */
+static int slot_logged_in(PKCS11_SLOT *slot) {
+	int logged_in = 0;
+
+	/* Check if already logged in to avoid resetting state */
+	if (PKCS11_is_logged_in(slot, 0, &logged_in) != 0) {
+		fprintf(stderr, "Unable to check if already logged in\n");
+		return 0;
+	}
+	return logged_in;
+}
+
 /*
  * Log-into the token if necessary.
  *
@@ -147,17 +160,7 @@ static int ctx_get_pin(ENGINE_CTX *ctx, const char* token_label, UI_METHOD *ui_m
 static int ctx_login(ENGINE_CTX *ctx, PKCS11_SLOT *slot, PKCS11_TOKEN *tok,
 		UI_METHOD *ui_method, void *callback_data)
 {
-	int already_logged_in = 0;
-
-	if (!tok->loginRequired)
-		return 1;
-
-	/* Check if already logged in to avoid resetting state */
-	if (PKCS11_is_logged_in(slot, 0, &already_logged_in) != 0) {
-		fprintf(stderr, "Unable to check if already logged in\n");
-		return 0;
-	}
-	if (already_logged_in)
+	if (!(ctx->force_login || tok->loginRequired) || slot_logged_in(slot))
 		return 1;
 
 	/* If the token has a secure login (i.e., an external keypad),
@@ -381,7 +384,15 @@ static X509 *ctx_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id,
 			n = parse_pkcs11_uri(s_slot_cert_id, &match_tok,
 				cert_id, &cert_id_len,
 				tmp_pin, &tmp_pin_len, &cert_label);
-			if (n && tmp_pin_len > 0 && tmp_pin[0] != 0) {
+			if (!n) {
+				fprintf(stderr,
+					"The certificate ID is not a valid PKCS#11 URI\n"
+					"The PKCS#11 URI format is defined by RFC7512\n");
+				return NULL;
+			}
+			if (tmp_pin_len > 0 && tmp_pin[0] != 0) {
+				if (!login)
+					return NULL; /* Process on second attempt */
 				ctx_destroy_pin(ctx);
 				ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
 				if (ctx->pin != NULL) {
@@ -390,17 +401,9 @@ static X509 *ctx_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id,
 					ctx->pin_length = tmp_pin_len;
 				}
 			}
-
-			if (!n) {
-				fprintf(stderr,
-					"The certificate ID is not a valid PKCS#11 URI\n"
-					"The PKCS#11 URI format is defined by RFC7512\n");
-				return NULL;
-			}
 		} else {
 			n = parse_slot_id_string(s_slot_cert_id, &slot_nr,
 				cert_id, &cert_id_len, &cert_label);
-
 			if (!n) {
 				fprintf(stderr,
 					"The certificate ID is not a valid PKCS#11 URI\n"
@@ -559,7 +562,8 @@ static int ctx_ctrl_load_cert(ENGINE_CTX *ctx, void *p)
 	if (parms->cert != NULL)
 		return 0;
 
-	parms->cert = ctx_load_cert(ctx, parms->s_slot_cert_id, 0);
+	if (!ctx->force_login)
+		parms->cert = ctx_load_cert(ctx, parms->s_slot_cert_id, 0);
 	if (parms->cert == NULL) /* Try again with login */
 		parms->cert = ctx_load_cert(ctx, parms->s_slot_cert_id, 1);
 
@@ -603,8 +607,15 @@ static EVP_PKEY *ctx_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 			n = parse_pkcs11_uri(s_slot_key_id, &match_tok,
 				key_id, &key_id_len,
 				tmp_pin, &tmp_pin_len, &key_label);
-
-			if (n && tmp_pin_len > 0 && tmp_pin[0] != 0) {
+			if (!n) {
+				fprintf(stderr,
+					"The certificate ID is not a valid PKCS#11 URI\n"
+					"The PKCS#11 URI format is defined by RFC7512\n");
+				return NULL;
+			}
+			if (tmp_pin_len > 0 && tmp_pin[0] != 0) {
+				if (!login)
+					return NULL; /* Process on second attempt */
 				ctx_destroy_pin(ctx);
 				ctx->pin = OPENSSL_malloc(MAX_PIN_LENGTH+1);
 				if (ctx->pin != NULL) {
@@ -613,17 +624,9 @@ static EVP_PKEY *ctx_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 					ctx->pin_length = tmp_pin_len;
 				}
 			}
-
-			if (!n) {
-				fprintf(stderr,
-					"The certificate ID is not a valid PKCS#11 URI\n"
-					"The PKCS#11 URI format is defined by RFC7512\n");
-				return NULL;
-			}
 		} else {
 			n = parse_slot_id_string(s_slot_key_id, &slot_nr,
 				key_id, &key_id_len, &key_label);
-
 			if (!n) {
 				fprintf(stderr,
 					"The certificate ID is not a valid PKCS#11 URI\n"
@@ -832,9 +835,10 @@ static EVP_PKEY *ctx_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 EVP_PKEY *ctx_load_pubkey(ENGINE_CTX *ctx, const char *s_key_id,
 		UI_METHOD *ui_method, void *callback_data)
 {
-	EVP_PKEY *pk;
+	EVP_PKEY *pk = NULL;
 
-	pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 0, 0);
+	if (!ctx->force_login)
+		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 0, 0);
 	if (pk == NULL) /* Try again with login */
 		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 0, 1);
 	if (pk == NULL) {
@@ -847,9 +851,10 @@ EVP_PKEY *ctx_load_pubkey(ENGINE_CTX *ctx, const char *s_key_id,
 EVP_PKEY *ctx_load_privkey(ENGINE_CTX *ctx, const char *s_key_id,
 		UI_METHOD *ui_method, void *callback_data)
 {
-	EVP_PKEY *pk;
+	EVP_PKEY *pk = NULL;
 
-	pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 1, 0);
+	if (!ctx->force_login)
+		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 1, 0);
 	if (pk == NULL) /* Try again with login */
 		pk = ctx_load_key(ctx, s_key_id, ui_method, callback_data, 1, 1);
 	if (pk == NULL) {
@@ -932,6 +937,12 @@ static int ctx_ctrl_set_callback_data(ENGINE_CTX *ctx, void *callback_data)
 	return 1;
 }
 
+static int ctx_ctrl_force_login(ENGINE_CTX *ctx)
+{
+	ctx->force_login = 1;
+	return 1;
+}
+
 int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 {
 	(void)i; /* We don't currently take integer parameters */
@@ -954,6 +965,8 @@ int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 	case ENGINE_CTRL_SET_CALLBACK_DATA:
 	case CMD_SET_CALLBACK_DATA:
 		return ctx_ctrl_set_callback_data(ctx, p);
+	case CMD_FORCE_LOGIN:
+		return ctx_ctrl_force_login(ctx);
 	default:
 		break;
 	}
