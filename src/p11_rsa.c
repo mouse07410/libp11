@@ -359,6 +359,49 @@ static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 	return PKCS11_private_decrypt(flen, from, to, key, padding);
 }
 
+static int pkcs11_rsa_sign_evp_pkey_ctx_method(int type, const unsigned char *m,
+		unsigned int m_length, unsigned char *sigret,
+		unsigned int *siglen, const RSA *rsa, EVP_PKEY_CTX *pkctx)
+{
+	int pad = -1;
+	const EVP_MD *sigmd, *mgf1md;
+	RSA_PSS_PARAMS *pss = NULL;
+	ASN1_STRING *os = NULL;
+	EVP_PKEY *pk = EVP_PKEY_CTX_get0_pkey(pkctx);
+	int saltlen, rv = 0;
+
+	fprintf(stderr, " pkcs11_rsa_sign_ctx_method called\n");
+	EVP_PKEY_CTX_get_rsa_padding(pkctx, &pad);
+
+	switch (pad) {
+	case RSA_PKCS1_PSS_PADDING:
+		fprintf(stderr, "RSA_PSS\n");
+		if (EVP_PKEY_CTX_get_signature_md(pkctx, &sigmd) <= 0)
+			goto err;
+		if (EVP_PKEY_CTX_get_rsa_mgf1_md(pkctx, &mgf1md) <= 0)
+			goto err;
+		if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(pkctx, &saltlen))
+			goto err;
+		if (saltlen == -1)
+			saltlen = EVP_MD_size(sigmd);
+		else if (saltlen == -2) {
+			saltlen = EVP_PKEY_size(pk) - EVP_MD_size(sigmd) - 2;
+			if (((EVP_PKEY_bits(pk) - 1) & 0x7) == 0)
+				saltlen--;
+		}
+		fprintf(stderr,"saltlen=%d sigmd=%d mdf1=%d \n",
+			saltlen, EVP_MD_type(sigmd),EVP_MD_type(mgf1md));
+		break;
+	default:
+	    fprintf(stderr, "not RSA PSS pad= %d\n", pad);
+	}
+
+err:
+
+	return 0; /* do nothing */
+}
+
+
 static int pkcs11_rsa_priv_enc_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
 {
@@ -473,6 +516,9 @@ RSA_METHOD *PKCS11_get_rsa_method(void)
 		RSA_meth_set_priv_enc(ops, pkcs11_rsa_priv_enc_method);
 		RSA_meth_set_priv_dec(ops, pkcs11_rsa_priv_dec_method);
 		RSA_meth_set_finish(ops, pkcs11_rsa_free_method);
+#if OPENSSL_VERSION_NUMBER > 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
+		RSA_meth_set_sign_evp_pkey_ctx(ops,pkcs11_rsa_sign_evp_pkey_ctx_method);
+#endif
 	}
 	return ops;
 }
