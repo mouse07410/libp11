@@ -346,6 +346,84 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
 
 #endif
 
+/*
+ * if we can not handle the this, call the original pkey_rsa_sign
+ */
+
+int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
+                         size_t *siglen, const unsigned char *tbs,
+                         size_t tbslen)
+{
+	int ret;
+	EVP_PKEY *pkey = NULL;
+	RSA *rsa = NULL;
+	const EVP_MD *sigmd = NULL, *mgf1md = NULL;
+	int pad = -1;
+	RSA_PSS_PARAMS *pss = NULL;
+	ASN1_STRING *os = NULL;
+	int saltlen, rv = 0;
+
+
+	fprintf(stderr, " pkcs11_pkey_rsa_sign called\n");
+
+	pkey = EVP_PKEY_CTX_get0_pkey(ctx);
+	if (pkey)
+		rsa = EVP_PKEY_get1_RSA(pkey);
+
+	EVP_PKEY_CTX_get_signature_md(ctx, &sigmd);
+
+	if (!rsa || !pkey)
+		goto do_original;
+
+	if (sigmd) {
+		if (tbslen != (size_t)EVP_MD_size(sigmd)) {
+			goto do_original;
+		}
+	}
+
+	EVP_PKEY_CTX_get_rsa_padding(ctx, &pad);
+
+	switch (pad) {
+		case RSA_PKCS1_PSS_PADDING:
+			fprintf(stderr, "RSA_PSS\n");
+			if (EVP_PKEY_CTX_get_signature_md(ctx, &sigmd) <= 0)
+				goto do_original;
+			if (EVP_PKEY_CTX_get_rsa_mgf1_md(ctx, &mgf1md) <= 0)
+				goto do_original;
+			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(ctx, &saltlen))
+				goto do_original;
+			if (saltlen == -1)
+				saltlen = EVP_MD_size(sigmd);
+			else if (saltlen == -2) {
+				saltlen = EVP_PKEY_size(pkey) - EVP_MD_size(sigmd) - 2;
+				if (((EVP_PKEY_bits(pkey) - 1) & 0x7) == 0)
+					saltlen--;
+			}
+
+/*
+ * Add code here to make CKM_* and see if card supports it. If it does, call PKCS#11
+ * functions to do the signature.  Then fill in sig snd siglen
+ * and return 1; 
+ * if card can not do it or fails  goto do_original. or return  error or -1.
+ * 
+ * Look at openssl/crypto/rsa/rsa_pmeth.c pkey_rsa_sign. 
+ */
+
+			fprintf(stderr,"saltlen=%d sigmd=%d mdf1=%d \n",
+				saltlen, EVP_MD_type(sigmd),EVP_MD_type(mgf1md));
+			break;
+		default:
+			fprintf(stderr, "not RSA PSS pad= %d\n", pad);
+		goto do_original;
+	}
+
+
+do_original:
+	if (rsa)
+	    RSA_free(rsa);
+	return (*original_rsa_pkey_sign)(ctx, sig, siglen, tbs, tbslen);
+}
+
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
 {

@@ -68,6 +68,8 @@
 #include <openssl/crypto.h>
 #include <openssl/objects.h>
 #include <openssl/engine.h>
+#include <openssl/evp.h>
+#include "libp11-int.h"
 #ifndef ENGINE_CMD_BASE
 #error did not get engine.h
 #endif
@@ -248,8 +250,36 @@ static int bind_helper(ENGINE *e)
 	}
 }
 
+extern int (*original_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
+			unsigned char *sig, size_t *siglen,
+			const unsigned char *tbs,size_t tbslen) = NULL;
+
+static int bind_evp_pkey_methods()
+{
+	EVP_PKEY_METHOD *pmeth = NULL;
+	EVP_PKEY_METHOD *original_evp_pkey_method_rsa = NULL;
+
+	int (*psign_init) (EVP_PKEY_CTX *ctx) = NULL;
+
+	int (*psign) (EVP_PKEY_CTX *ctx,
+		unsigned char *sig, size_t *siglen,
+		const unsigned char *tbs,size_t tbslen) = NULL;
+
+	original_evp_pkey_method_rsa = EVP_PKEY_meth_find(EVP_PKEY_RSA);
+	pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0);
+	EVP_PKEY_meth_copy(pmeth, original_evp_pkey_method_rsa);
+	
+	EVP_PKEY_meth_get_sign(original_evp_pkey_method_rsa, &psign_init, &psign);
+	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
+	EVP_PKEY_meth_add0(pmeth);
+	original_rsa_pkey_sign = psign;
+
+	return 1;
+}
+
 static int bind_fn(ENGINE *e, const char *id)
 {
+	
 	if (id && (strcmp(id, PKCS11_ENGINE_ID) != 0)) {
 		fprintf(stderr, "bad engine id\n");
 		return 0;
@@ -258,6 +288,11 @@ static int bind_fn(ENGINE *e, const char *id)
 		fprintf(stderr, "bind failed\n");
 		return 0;
 	}
+	if (!bind_evp_pkey_methods()) {
+		fprintf(stderr, "bind of EVP_PKEY_METHODs failed\n");
+		return 0;
+	}
+	
 	return 1;
 }
 

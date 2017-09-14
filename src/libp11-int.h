@@ -294,6 +294,14 @@ extern int pkcs11_store_certificate(PKCS11_TOKEN * token, X509 * x509,
 		char *label, unsigned char *id, size_t id_len,
 		PKCS11_CERT **ret_cert);
 
+/* Our version of EVP_PKEY pkey_rsa_sign */
+extern int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
+		const unsigned char *tbs, size_t tbslen);
+
+int (*original_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
+			unsigned char *sig, size_t *siglen,
+			const unsigned char *tbs,size_t tbslen);
+
 /* Access the random number generator */
 extern int pkcs11_seed_random(PKCS11_SLOT *, const unsigned char *s, unsigned int s_len);
 extern int pkcs11_generate_random(PKCS11_SLOT *, unsigned char *r, unsigned int r_len);
