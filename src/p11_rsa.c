@@ -359,7 +359,6 @@ static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 	return PKCS11_private_decrypt(flen, from, to, key, padding);
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100004L
 static int pkcs11_rsa_sign_evp_pkey_ctx_method(int type, const unsigned char *m,
 		unsigned int m_length, unsigned char *sigret,
 		unsigned int *siglen, const RSA *rsa, EVP_PKEY_CTX *pkctx)
@@ -401,7 +400,7 @@ err:
 
 	return 0; /* do nothing */
 }
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10100004L */
+
 
 static int pkcs11_rsa_priv_enc_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
