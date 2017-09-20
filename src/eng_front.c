@@ -250,10 +250,6 @@ static int bind_helper(ENGINE *e)
 	}
 }
 
-extern int (*original_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
-			unsigned char *sig, size_t *siglen,
-			const unsigned char *tbs,size_t tbslen) = NULL;
-
 static int bind_evp_pkey_methods()
 {
 	EVP_PKEY_METHOD *pmeth = NULL;
@@ -265,14 +261,16 @@ static int bind_evp_pkey_methods()
 		unsigned char *sig, size_t *siglen,
 		const unsigned char *tbs,size_t tbslen) = NULL;
 
-	original_evp_pkey_method_rsa = EVP_PKEY_meth_find(EVP_PKEY_RSA);
+	original_evp_pkey_method_rsa = (EVP_PKEY_METHOD *) EVP_PKEY_meth_find(EVP_PKEY_RSA);
 	pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0);
 	EVP_PKEY_meth_copy(pmeth, original_evp_pkey_method_rsa);
 	
 	EVP_PKEY_meth_get_sign(original_evp_pkey_method_rsa, &psign_init, &psign);
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 	EVP_PKEY_meth_add0(pmeth);
-	original_rsa_pkey_sign = psign;
+	if (psign == NULL)
+		fprintf(stderr, "TROUBLE! psign is NULL!\n");
+	orig_rsa_sign = (original_rsa_pkey_sign_t) psign;
 
 	return 1;
 }
