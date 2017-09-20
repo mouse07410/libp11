@@ -361,7 +361,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 	RSA *rsa = NULL;
 	const EVP_MD *sigmd = NULL, *mgf1md = NULL;
 	int pad = -1;
-	RSA_PSS_PARAMS *pss = NULL;
+	CK_RSA_PKCS_PSS_PARAMS pss_params;
 	ASN1_STRING *os = NULL;
 	int saltlen, rv = 0;
 
@@ -417,7 +417,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 		default:
 			fprintf(stderr, "not RSA PSS pad= %d\n", pad);
 		goto do_original;
-	}
+	} /* end switch(pad) */
 
 
 do_original:
@@ -426,7 +426,7 @@ do_original:
 	if (orig_rsa_sign == NULL)
 		fprintf(stderr, "ERROR! orig_rsa_sign ptr is NULL!\n");
 	return (*orig_rsa_sign)(ctx, sig, siglen, tbs, tbslen);
-}
+} /* end pkcs11_pkey_rsa_sign() */
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
