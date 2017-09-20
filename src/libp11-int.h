@@ -298,7 +298,7 @@ extern int pkcs11_store_certificate(PKCS11_TOKEN * token, X509 * x509,
 extern int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		const unsigned char *tbs, size_t tbslen);
 
-int (*original_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
+int (*orig_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
 			unsigned char *sig, size_t *siglen,
 			const unsigned char *tbs,size_t tbslen);
 

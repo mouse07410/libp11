@@ -421,7 +421,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 do_original:
 	if (rsa)
 	    RSA_free(rsa);
-	return (*original_rsa_pkey_sign)(ctx, sig, siglen, tbs, tbslen);
+	return (*orig_rsa_pkey_sign)(ctx, sig, siglen, tbs, tbslen);
 }
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,

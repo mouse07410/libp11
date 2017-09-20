@@ -127,6 +127,13 @@ static const ENGINE_CMD_DEFN engine_cmd_defns[] = {
 	{0, NULL, NULL, 0}
 };
 
+/* Used to hook the EVP_PKEY rsa_pkey_sign */
+extern int (*orig_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
+			unsigned char *sig, size_t *siglen,
+			const unsigned char *tbs,size_t tbslen);
+
+EVP_PKEY_METHOD *p11eng_evp_pkey_rsa = NULL;
+
 static ENGINE_CTX *get_ctx(ENGINE *engine)
 {
 	ENGINE_CTX *ctx;
@@ -250,31 +257,62 @@ static int bind_helper(ENGINE *e)
 	}
 }
 
-extern int (*original_rsa_pkey_sign)(EVP_PKEY_CTX *ctx,
-			unsigned char *sig, size_t *siglen,
-			const unsigned char *tbs,size_t tbslen) = NULL;
 
-static int bind_evp_pkey_methods()
+static int p11eng_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
+                           const int **nids, int nid)
+{
+    static int p11eng_pkey_nids[] = {
+        EVP_PKEY_RSA,
+        0
+    };
+    if (!pmeth) {
+        *nids = p11eng_pkey_nids;
+        return 1;
+    }
+
+    if (nid == EVP_PKEY_RSA) {
+        *pmeth = p11eng_evp_pkey_rsa;
+        return 1;
+    }
+
+    *pmeth = NULL;
+    return 0;
+}
+
+static int bind_evp_pkey_methods(ENGINE *e)
 {
 	EVP_PKEY_METHOD *pmeth = NULL;
-	EVP_PKEY_METHOD *original_evp_pkey_method_rsa = NULL;
+	/* TODO check if already done */
+	EVP_PKEY_METHOD *orig_evp_pkey_meth_rsa = NULL;
 
 	int (*psign_init) (EVP_PKEY_CTX *ctx) = NULL;
 
 	int (*psign) (EVP_PKEY_CTX *ctx,
 		unsigned char *sig, size_t *siglen,
-		const unsigned char *tbs,size_t tbslen) = NULL;
+		const unsigned char *tbs, size_t tbslen) = NULL;
 
-	original_evp_pkey_method_rsa = EVP_PKEY_meth_find(EVP_PKEY_RSA);
-	pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0);
-	EVP_PKEY_meth_copy(pmeth, original_evp_pkey_method_rsa);
-	
-	EVP_PKEY_meth_get_sign(original_evp_pkey_method_rsa, &psign_init, &psign);
+	if (!(orig_evp_pkey_meth_rsa = (EVP_PKEY_METHOD *)EVP_PKEY_meth_find(EVP_PKEY_RSA)) ||
+		!(pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0)))
+			goto err;
+
+	EVP_PKEY_meth_copy(pmeth, orig_evp_pkey_meth_rsa);
+	EVP_PKEY_meth_get_sign(orig_evp_pkey_meth_rsa, &psign_init, &psign);
+
+	if (!psign) /* psign_init may be NULL */
+		goto err;
+
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
-	EVP_PKEY_meth_add0(pmeth);
-	original_rsa_pkey_sign = psign;
+
+	p11eng_evp_pkey_rsa = pmeth;
+	orig_rsa_pkey_sign = psign;
+
+	if (!ENGINE_set_pkey_meths(e,p11eng_pkey_meths))
+		goto err;
 
 	return 1;
+err:
+	fprintf(stderr, "creating custon evp_pkey_rsa failed\n");
+	return 0;
 }
 
 static int bind_fn(ENGINE *e, const char *id)
@@ -288,8 +326,8 @@ static int bind_fn(ENGINE *e, const char *id)
 		fprintf(stderr, "bind failed\n");
 		return 0;
 	}
-	if (!bind_evp_pkey_methods()) {
-		fprintf(stderr, "bind of EVP_PKEY_METHODs failed\n");
+	if (!bind_evp_pkey_methods(e)) {
+		fprintf(stderr, "bind of EVP_PKEY_METHs failed\n");
 		return 0;
 	}
 	
