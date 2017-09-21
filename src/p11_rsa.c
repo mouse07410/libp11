@@ -347,12 +347,13 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
 #endif
 
 /*
+ * We only do CKM_RSA_PKCS_PSS
  * if we can not handle the this, call the original pkey_rsa_sign
  */
 
 orig_rsa_pkey_sign_t orig_rsa_pkey_sign;
 
-int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
+int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
                          size_t *siglen, const unsigned char *tbs,
                          size_t tbslen)
 {
@@ -364,15 +365,29 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 	CK_RSA_PKCS_PSS_PARAMS pss_params;
 	ASN1_STRING *os = NULL;
 	int saltlen, rv = 0;
-
+	CK_MECHANISM  mechanism;
+	CK_ULONG size = *siglen;
+	PKCS11_KEY *key = NULL;
+	PKCS11_SLOT *slot = NULL;
+	PKCS11_CTX *ctx = NULL;
+	PKCS11_KEY_private *kpriv = NULL;
+	PKCS11_SLOT_private *spriv = NULL;
 
 	fprintf(stderr, " pkcs11_pkey_rsa_sign called\n");
 
-	pkey = EVP_PKEY_CTX_get0_pkey(ctx);
-	if (pkey)
-		rsa = EVP_PKEY_get1_RSA(pkey);
+	 if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
+		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
+		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
+			goto do_original;
 
-	EVP_PKEY_CTX_get_signature_md(ctx, &sigmd);
+	EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd);
+
+	slot = KEY2SLOT(key);
+	ctx = KEY2CTX(key);
+	kpriv = PRIVKEY(key);
+	spriv = PRIVSLOT(slot);
+
+
 
 	if (!rsa || !pkey)
 		goto do_original;
@@ -383,16 +398,16 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 		}
 	}
 
-	EVP_PKEY_CTX_get_rsa_padding(ctx, &pad);
+	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
 
 	switch (pad) {
 		case RSA_PKCS1_PSS_PADDING:
 			fprintf(stderr, "RSA_PSS\n");
-			if (EVP_PKEY_CTX_get_signature_md(ctx, &sigmd) <= 0)
+			if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
 				goto do_original;
-			if (EVP_PKEY_CTX_get_rsa_mgf1_md(ctx, &mgf1md) <= 0)
+			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0)
 				goto do_original;
-			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(ctx, &saltlen))
+			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(evp_pkey_ctx, &saltlen))
 				goto do_original;
 			if (saltlen == -1)
 				saltlen = EVP_MD_size(sigmd);
@@ -402,31 +417,91 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 					saltlen--;
 			}
 
-/*
- * Add code here to make CKM_* and see if card supports it. If it does, call PKCS#11
- * functions to do the signature.  Then fill in sig snd siglen
- * and return 1; 
- * if card can not do it or fails  goto do_original. or return  error or -1.
- * 
- * Look at openssl/crypto/rsa/rsa_pmeth.c pkey_rsa_sign. 
- */
+
 
 			fprintf(stderr,"saltlen=%d sigmd=%d mdf1=%d \n",
 				saltlen, EVP_MD_type(sigmd),EVP_MD_type(mgf1md));
+
+				
+			/* make up a CK_MECHANISM */
+			memset(&pss_params, 0, sizeof(CK_RSA_PKCS_PSS_PARAMS));
+			switch (EVP_MD_type(sigmd)) {
+				case NID_sha256:
+					pss_params.hashAlg = CKM_SHA256;
+					break;
+				case NID_sha512:
+					pss_params.hashAlg = CKM_SHA512;
+					break;
+				case NID_sha384:
+					pss_params.hashAlg = CKM_SHA384;
+					break;
+				default:
+					goto do_original;
+			}
+			switch (EVP_MD_type(mgf1md)) {
+				case NID_sha256:
+					pss_params.mgf = CKG_MGF1_SHA256;
+					break;
+				case NID_sha512:
+					pss_params.mgf = CKG_MGF1_SHA512;
+					break;
+				case NID_sha384:
+					pss_params.mgf =  CKG_MGF1_SHA384;
+					break;
+				case NID_sha224:
+					pss_params.mgf =  CKG_MGF1_SHA224;
+					break;
+				default:
+				    goto do_original;
+			}
+
+			pss_params.sLen = saltlen;
+
+
+			memset(&mechanism, 0, sizeof(CK_MECHANISM));
+
+			mechanism.mechanism = CKM_RSA_PKCS_PSS;
+			mechanism.pParameter = &pss_params;
+			mechanism.ulParameterLen = sizeof(pss_params);
 			break;
+			/* Add future paddings here */
+			/* TODO we could do any RSA padding here too! */
 		default:
 			fprintf(stderr, "not RSA PSS pad= %d\n", pad);
 		goto do_original;
 	} /* end switch(pad) */
 
+	/*
+	 * will try for this mechanism for now. 
+	 * TODO We could first check if token supports it or not.
+	 */
+
+
+	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
+	/* Try signing first, as applications are more likely to use it */
+	rv = CRYPTOKI_call(ctx,
+		C_SignInit(spriv->session, &mechanism, kpriv->object));
+	if (!rv || kpriv->always_authenticate == CK_TRUE)
+		rv = pkcs11_authenticate(key);
+	if (!rv)
+		rv = CRYPTOKI_call(ctx,
+			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
+	/* check rv */ 
+	*siglen = size;
+	
+	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
+	fprintf(stderr, "C_SignInit and or C_Sign with CKM_RSA_PKCS_PSS rv =%u\n", rv);
+	if (rv != 0)
+		goto do_original;
+		
+	return size;
 
 do_original:
 	if (rsa)
-		RSA_free(rsa);
-	if (orig_rsa_pkey_sign == NULL)
-		fprintf(stderr, "ERROR! orig_rsa_pkey_sign ptr is NULL!\n");
-	return (*orig_rsa_pkey_sign)(ctx, sig, siglen, tbs, tbslen);
-} /* end pkcs11_pkey_rsa_sign() */
+	    RSA_free(rsa);
+	return (*orig_rsa_pkey_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
+}
+
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
