@@ -42,4 +42,3 @@ PKCS11_get_ecdsa_method
 PKCS11_get_ecdh_method
 ERR_load_PKCS11_strings
 PKCS11_set_ui_method
-orig_rsa_sign
