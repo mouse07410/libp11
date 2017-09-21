@@ -350,7 +350,7 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
  * if we can not handle the this, call the original pkey_rsa_sign
  */
 
-original_rsa_pkey_sign_t orig_rsa_sign;
+orig_rsa_pkey_sign_t orig_rsa_pkey_sign;
 
 int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
                          size_t *siglen, const unsigned char *tbs,
@@ -422,10 +422,10 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig,
 
 do_original:
 	if (rsa)
-	    RSA_free(rsa);
-	if (orig_rsa_sign == NULL)
-		fprintf(stderr, "ERROR! orig_rsa_sign ptr is NULL!\n");
-	return (*orig_rsa_sign)(ctx, sig, siglen, tbs, tbslen);
+		RSA_free(rsa);
+	if (orig_rsa_pkey_sign == NULL)
+		fprintf(stderr, "ERROR! orig_rsa_pkey_sign ptr is NULL!\n");
+	return (*orig_rsa_pkey_sign)(ctx, sig, siglen, tbs, tbslen);
 } /* end pkcs11_pkey_rsa_sign() */
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
