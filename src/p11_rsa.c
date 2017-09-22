@@ -419,7 +419,6 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 					saltlen--;
 			}
 
-			
 			fprintf(stderr,"saltlen=%d hashAlg=%s mgf=MGF1-%s \n",
 				saltlen, OBJ_nid2sn(EVP_MD_type(sigmd)),
 				OBJ_nid2sn(EVP_MD_type(mgf1md)));
@@ -467,6 +466,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			}
 
 			pss_params.sLen = saltlen;
+
 
 			memset(&mechanism, 0, sizeof(CK_MECHANISM));
 
