@@ -349,7 +349,7 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
 
 /*
  * We only do CKM_RSA_PKCS_PSS
- * if we can not handle the this, call the original pkey_rsa_sign
+ * if we can not handle this, call the original pkey_rsa_sign
  */
 
 orig_rsa_pkey_sign_t orig_rsa_pkey_sign;
@@ -374,10 +374,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	PKCS11_KEY_private *kpriv = NULL;
 	PKCS11_SLOT_private *spriv = NULL;
 
-#ifdef DEBUG
-	fprintf(stderr, " pkcs11_pkey_rsa_sign called\n");
-#endif
-	 if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
+	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
 		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
 		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
 			goto do_original;
@@ -388,8 +385,6 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	ctx = KEY2CTX(key);
 	kpriv = PRIVKEY(key);
 	spriv = PRIVSLOT(slot);
-
-
 
 	if (!rsa || !pkey)
 		goto do_original;
@@ -477,7 +472,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			/* Add future paddings here */
 			/* TODO we could do any RSA padding here too! */
 		default:
-			fprintf(stderr, "not RSA PSS pad= %d\n", pad);
+			fprintf(stderr, "not RSA PSS padding: %d\n", pad);
 		goto do_original;
 	} /* end switch(pad) */
 
@@ -491,13 +486,9 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	/* Try signing first, as applications are more likely to use it */
 	rv = CRYPTOKI_call(ctx,
 		C_SignInit(spriv->session, &mechanism, kpriv->object));
-#ifdef DEBUG
-	if (rv != CKR_OK) 
-		fprintf(stderr, "C_SignInit() returned %u ALWAYS_AUTH=%s\n",
-			rv, (kpriv->always_authenticate==CK_TRUE? "TRUE" : "FALSE"));
-#endif /* DEBUG */
-	if (rv != CKR_OK) goto unlock;
-	if (kpriv->always_authenticate == CK_TRUE)
+
+	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
+	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
@@ -507,9 +498,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
-#ifdef DEBUG
-	fprintf(stderr, "C_SignInit and or C_Sign with CKM_RSA_PKCS_PSS rv =%u\n", rv);
-#endif /* DEBUG */
+
 	if (rv != CKR_OK)
 		goto do_original;
 		
