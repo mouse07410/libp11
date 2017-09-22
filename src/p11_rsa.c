@@ -26,6 +26,7 @@
 #include <string.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/objects.h>
 
 static int rsa_ex_index = 0;
 
@@ -373,8 +374,9 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	PKCS11_KEY_private *kpriv = NULL;
 	PKCS11_SLOT_private *spriv = NULL;
 
+#ifdef DEBUG
 	fprintf(stderr, " pkcs11_pkey_rsa_sign called\n");
-
+#endif
 	 if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
 		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
 		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
@@ -417,15 +419,17 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 					saltlen--;
 			}
 
+			
+			fprintf(stderr,"saltlen=%d hashAlg=%s mgf=MGF1-%s \n",
+				saltlen, OBJ_nid2sn(EVP_MD_type(sigmd)),
+				OBJ_nid2sn(EVP_MD_type(mgf1md)));
 
-
-			fprintf(stderr,"saltlen=%d sigmd=%d mdf1=%d \n",
-				saltlen, EVP_MD_type(sigmd),EVP_MD_type(mgf1md));
-
-				
 			/* make up a CK_MECHANISM */
 			memset(&pss_params, 0, sizeof(CK_RSA_PKCS_PSS_PARAMS));
 			switch (EVP_MD_type(sigmd)) {
+				case NID_sha1:
+					pss_params.hashAlg = CKM_SHA_1;
+					break;
 				case NID_sha256:
 					pss_params.hashAlg = CKM_SHA256;
 					break;
@@ -435,10 +439,17 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 				case NID_sha384:
 					pss_params.hashAlg = CKM_SHA384;
 					break;
+				case NID_sha224:
+					pss_params.hashAlg = CKM_SHA224;
+					break;
 				default:
 					goto do_original;
 			}
+
 			switch (EVP_MD_type(mgf1md)) {
+				case NID_sha1:
+					pss_params.mgf = CKG_MGF1_SHA1;
+					break;
 				case NID_sha256:
 					pss_params.mgf = CKG_MGF1_SHA256;
 					break;
@@ -456,7 +467,6 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			}
 
 			pss_params.sLen = saltlen;
-
 
 			memset(&mechanism, 0, sizeof(CK_MECHANISM));
 
@@ -481,17 +491,26 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	/* Try signing first, as applications are more likely to use it */
 	rv = CRYPTOKI_call(ctx,
 		C_SignInit(spriv->session, &mechanism, kpriv->object));
-	if (!rv || kpriv->always_authenticate == CK_TRUE)
-		rv = pkcs11_authenticate(key);
+#ifdef DEBUG
+	if (rv != CKR_OK) 
+		fprintf(stderr, "C_SignInit() returned %u ALWAYS_AUTH=%s\n",
+			rv, (kpriv->always_authenticate==CK_TRUE? "TRUE" : "FALSE"));
+#endif /* DEBUG */
+	if (rv != CKR_OK) goto unlock;
+	if (kpriv->always_authenticate == CK_TRUE)
+		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
 			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
-	/* check rv */ 
+	/* check rv after unlocking */ 
 	*siglen = size;
 	
+unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
+#ifdef DEBUG
 	fprintf(stderr, "C_SignInit and or C_Sign with CKM_RSA_PKCS_PSS rv =%u\n", rv);
-	if (rv != 0)
+#endif /* DEBUG */
+	if (rv != CKR_OK)
 		goto do_original;
 		
 	return size;
