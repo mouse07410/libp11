@@ -513,11 +513,155 @@ do_original:
 /* Support for RSA-PKCS-OAEP encryption */
 orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
 
-int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *ctx,
+int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                             unsigned char *out, size_t *outlen,
                             const unsigned char *in, size_t inlen)
 {
+	int ret;
+	unsigned char out_buf[4096];
+	EVP_PKEY *pkey = NULL;
+	RSA *rsa = NULL;
+	const EVP_MD *oaep_md = NULL, *mgf1_md = NULL;
+	int pad = -1;
+	CK_RSA_PKCS_OAEP_PARAMS oaep_params;
+	ASN1_STRING *os = NULL;
+	int rv = 0;
+	CK_MECHANISM  mechanism;
+	CK_ULONG size = *outlen;
+	PKCS11_KEY *key = NULL;
+	PKCS11_SLOT *slot = NULL;
+	PKCS11_CTX *ctx = NULL;
+	PKCS11_KEY_private *kpriv = NULL;
+	PKCS11_SLOT_private *spriv = NULL;
 
+	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
+		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
+		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
+			goto do_original;
+
+	slot  = KEY2SLOT(key);
+	ctx   = KEY2CTX(key);
+	kpriv = PRIVKEY(key);
+	spriv = PRIVSLOT(slot);
+
+#ifdef DEBUG
+	fprintf(stderr, "Called pkcs11_pkey_rsa_decrypt() out=%p *outlen=%lu in=%p inlen=%lu\n",
+		out, *outlen, in, inlen);
+#endif
+
+	/* Get the padding type */
+	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
+
+	switch (pad) {
+		case RSA_PKCS1_OAEP_PADDING:
+			fprintf(stderr, "RSA_OAEP\n");
+			if (EVP_PKEY_CTX_get_rsa_oaep_md(evp_pkey_ctx, &oaep_md) <= 0)
+				goto do_original;
+			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1_md) <= 0)
+				goto do_original;
+
+			fprintf(stderr, "hashAlg=%s mgf=MGF1-%s \n",
+				OBJ_nid2sn(EVP_MD_type(oaep_md)),
+				OBJ_nid2sn(EVP_MD_type(mgf1_md)));
+
+			/* make up a CK_MECHANISM */
+			memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
+
+			switch (EVP_MD_type(oaep_md)) {
+				case NID_sha1:
+					oaep_params.hashAlg = CKM_SHA_1;
+					break;
+				case NID_sha224:
+					oaep_params.hashAlg = CKM_SHA224;
+					break;
+				case NID_sha256:
+					oaep_params.hashAlg = CKM_SHA256;
+					break;
+				case NID_sha512:
+					oaep_params.hashAlg = CKM_SHA512;
+					break;
+				case NID_sha384:
+					oaep_params.hashAlg = CKM_SHA384;
+					break;
+				default:
+					goto do_original;
+			} /* end switch(oaep_md) */
+
+			switch (EVP_MD_type(mgf1_md)) {
+				case NID_sha1:
+					oaep_params.mgf = CKG_MGF1_SHA1;
+					break;
+				case NID_sha224:
+					oaep_params.mgf =  CKG_MGF1_SHA224;
+					break;
+				case NID_sha256:
+					oaep_params.mgf = CKG_MGF1_SHA256;
+					break;
+				case NID_sha512:
+					oaep_params.mgf = CKG_MGF1_SHA512;
+					break;
+				case NID_sha384:
+					oaep_params.mgf =  CKG_MGF1_SHA384;
+					break;
+				default:
+					oaep_params.mgf = CKG_MGF1_SHA1;
+					break;
+			} /* end switch(mgf1_md) */
+
+			/* These settings are compatible with OpenSSL 1.0.2L and 1.1.0+ */
+			/* We do not support OAEP "label" parameter yet... */
+			oaep_params.source = 0UL;  /* empty encoding parameter (label) */
+			oaep_params.pSourceData = NULL; /* PKCS#11 standard: this must be NULLPTR */
+			oaep_params.ulSourceDataLen = 0; /* PKCS#11 standard: this must be 0 */
+
+			memset(&mechanism, 0, sizeof(CK_MECHANISM));
+
+			mechanism.mechanism = CKM_RSA_PKCS_OAEP;
+			mechanism.pParameter = &oaep_params;
+			mechanism.ulParameterLen = sizeof(oaep_params);
+
+			break;
+
+			/* Add future paddings here */
+			/* TODO we could do any RSA padding here too! */
+
+		default:
+			fprintf(stderr, "not RSA-OAEP padding: %d\n", pad);
+			break;
+	} /* end switch(pad) */
+
+	size = sizeof(out_buf);
+	memset(out_buf, 0, sizeof(out_buf));
+
+	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
+	/* Try decrypting first, as applications are more likely to use it */
+	rv = CRYPTOKI_call(ctx,
+		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
+
+	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
+	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
+		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
+	if (!rv)
+		rv = CRYPTOKI_call(ctx,
+			C_Decrypt(spriv->session, (unsigned char *) in, inlen, out_buf, &size));
+	
+	/* check rv after unlocking */ 
+	*outlen = size;
+	
+unlock:
+	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
+
+	if (rv != CKR_OK)
+		goto do_original;
+		
+	if (out != NULL)
+		memcpy(out, out_buf, size);
+	return size;
+
+do_original:
+	if (rsa)
+		RSA_free(rsa);
+	return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
 }
 
 
