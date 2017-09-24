@@ -352,7 +352,7 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
  * if we can not handle this, call the original pkey_rsa_sign
  */
 
-orig_rsa_pkey_sign_t orig_rsa_pkey_sign;
+orig_pkey_rsa_sign_t orig_pkey_rsa_sign = NULL;
 
 int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
                          size_t *siglen, const unsigned char *tbs,
@@ -507,7 +507,17 @@ unlock:
 do_original:
 	if (rsa)
 	    RSA_free(rsa);
-	return (*orig_rsa_pkey_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
+	return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
+}
+
+/* Support for RSA-PKCS-OAEP encryption */
+orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
+
+int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *ctx,
+                            unsigned char *out, size_t *outlen,
+                            const unsigned char *in, size_t inlen)
+{
+
 }
 
 

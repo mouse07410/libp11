@@ -298,7 +298,7 @@ static int bind_evp_pkey_methods(ENGINE *e)
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 
 	p11eng_evp_pkey_rsa = pmeth;
-	orig_rsa_pkey_sign = psign;
+	orig_pkey_rsa_sign  = psign;
 
 	if (!ENGINE_set_pkey_meths(e,p11eng_pkey_meths))
 		goto err;
