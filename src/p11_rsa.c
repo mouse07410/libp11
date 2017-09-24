@@ -653,8 +653,11 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 		rv = CRYPTOKI_call(ctx,
 			C_Decrypt(spriv->session, (CK_BYTE *) in, inlen, (CK_BYTE_PTR) out_buf, &size));
 	
-	/* check rv after unlocking */ 
-	*outlen = size;
+	/* we will check rv after unlocking */ 
+
+	/* Make sure we aren't overstepping provided output buffer size */
+	if (out == NULL || *outlen == 0 || *outlen >= size)
+		*outlen = size;
 	
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
@@ -662,8 +665,16 @@ unlock:
 	if (rv != CKR_OK)
 		goto do_original;
 		
-	if (out != NULL)
+	if (out != NULL) {
+		/* Validate output buffer size before copying to there */
+		if (*outlen < size) {
+			fprintf(stderr, "pkcs11_pkey_rsa_decrypt(): for %d padding "
+				"output buffer (%lu bytes) too small! (need %lu)\n",
+				pad, *outlen, size);
+			return -1;
+		}
 		memcpy(out, out_buf, size);
+	}
 	return size;
 
 do_original:
