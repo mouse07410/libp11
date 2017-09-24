@@ -544,6 +544,9 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	kpriv = PRIVKEY(key);
 	spriv = PRIVSLOT(slot);
 
+	memset(&mechanism, 0, sizeof(CK_MECHANISM));
+	memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
+
 #ifdef DEBUG
 	fprintf(stderr, "Called pkcs11_pkey_rsa_decrypt() out=%p *outlen=%lu in=%p inlen=%lu\n",
 		out, *outlen, in, inlen);
@@ -565,28 +568,32 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 				OBJ_nid2sn(EVP_MD_type(mgf1_md)));
 
 			/* make up a CK_MECHANISM */
-			memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
 
 			switch (EVP_MD_type(oaep_md)) {
-				case NID_sha1:
-					oaep_params.hashAlg = CKM_SHA_1;
-					break;
 				case NID_sha224:
 					oaep_params.hashAlg = CKM_SHA224;
+					oaep_params.mgf =  CKG_MGF1_SHA224;
 					break;
 				case NID_sha256:
 					oaep_params.hashAlg = CKM_SHA256;
-					break;
-				case NID_sha512:
-					oaep_params.hashAlg = CKM_SHA512;
+					oaep_params.mgf = CKG_MGF1_SHA256;
 					break;
 				case NID_sha384:
 					oaep_params.hashAlg = CKM_SHA384;
+					oaep_params.mgf =  CKG_MGF1_SHA384;
+					break;
+				case NID_sha512:
+					oaep_params.hashAlg = CKM_SHA512;
+					oaep_params.mgf = CKG_MGF1_SHA512;
 					break;
 				default:
-					goto do_original;
+					/* fallthrough to SHA-1 as default */
+				case NID_sha1:
+					oaep_params.hashAlg = CKM_SHA_1;
+					oaep_params.mgf = CKG_MGF1_SHA1;
+					break;
 			} /* end switch(oaep_md) */
-
+			
 			switch (EVP_MD_type(mgf1_md)) {
 				case NID_sha1:
 					oaep_params.mgf = CKG_MGF1_SHA1;
@@ -597,11 +604,11 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 				case NID_sha256:
 					oaep_params.mgf = CKG_MGF1_SHA256;
 					break;
-				case NID_sha512:
-					oaep_params.mgf = CKG_MGF1_SHA512;
-					break;
 				case NID_sha384:
 					oaep_params.mgf =  CKG_MGF1_SHA384;
+					break;
+				case NID_sha512:
+					oaep_params.mgf = CKG_MGF1_SHA512;
 					break;
 				default:
 					oaep_params.mgf = CKG_MGF1_SHA1;
@@ -610,11 +617,9 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 
 			/* These settings are compatible with OpenSSL 1.0.2L and 1.1.0+ */
 			/* We do not support OAEP "label" parameter yet... */
-			oaep_params.source = 0UL;  /* empty encoding parameter (label) */
-			oaep_params.pSourceData = NULL; /* PKCS#11 standard: this must be NULLPTR */
-			oaep_params.ulSourceDataLen = 0; /* PKCS#11 standard: this must be 0 */
-
-			memset(&mechanism, 0, sizeof(CK_MECHANISM));
+			oaep_params.source = 0UL;  /* empty parameter (label) */
+			oaep_params.pSourceData = NULL; 
+			oaep_params.ulSourceDataLen = 0;
 
 			mechanism.mechanism = CKM_RSA_PKCS_OAEP;
 			mechanism.pParameter = &oaep_params;
@@ -624,7 +629,10 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 
 			/* Add future paddings here */
 			/* TODO we could do any RSA padding here too! */
-
+    		case CKM_RSA_PKCS:
+                	mechanism.pParameter = NULL;
+                	mechanism.ulParameterLen = 0;
+                	break;
 		default:
 			fprintf(stderr, "not RSA-OAEP padding: %d\n", pad);
 			break;
