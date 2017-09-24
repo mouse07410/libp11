@@ -659,8 +659,7 @@ unlock:
 	return size;
 
 do_original:
-	if (rsa)
-		RSA_free(rsa);
+	if (rsa) RSA_free(rsa);
 	return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
 }
 

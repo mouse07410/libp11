@@ -293,7 +293,6 @@ static int bind_evp_pkey_methods(ENGINE *e)
 	!(pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0)))
 			goto err;
 
-	/* Getting original pkey_rsa_sign method set */
 	EVP_PKEY_meth_copy(pmeth, orig_evp_pkey_meth_rsa);
 	EVP_PKEY_meth_get_sign(orig_evp_pkey_meth_rsa, &psign_init, &psign);
 
@@ -302,15 +301,17 @@ static int bind_evp_pkey_methods(ENGINE *e)
 
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 
-	/* Getting original pkey_rsa_decrypt method set */
 	EVP_PKEY_meth_get_decrypt(orig_evp_pkey_meth_rsa, &pdecr_init, &pdecr);
+	if (!pdecr) /* pdecr_init may be NULL */
+		goto err;
+
 	EVP_PKEY_meth_set_decrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_decrypt);
 
 	p11eng_evp_pkey_rsa = pmeth;
 	orig_pkey_rsa_sign  = psign;
 	orig_pkey_rsa_decrypt  = pdecr;
 
-	if (!ENGINE_set_pkey_meths(e,p11eng_pkey_meths))
+	if (!ENGINE_set_pkey_meths(e, p11eng_pkey_meths))
 		goto err;
 	
 	return 1;
