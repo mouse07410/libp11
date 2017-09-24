@@ -642,7 +642,7 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	memset(out_buf, 0, sizeof(out_buf));
 
 	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
-	/* Try decrypting first, as applications are more likely to use it */
+	
 	rv = CRYPTOKI_call(ctx,
 		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
 
@@ -651,7 +651,7 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-			C_Decrypt(spriv->session, (unsigned char *) in, inlen, out_buf, &size));
+			C_Decrypt(spriv->session, (CK_BYTE *) in, inlen, (CK_BYTE_PTR) out_buf, &size));
 	
 	/* check rv after unlocking */ 
 	*outlen = size;
