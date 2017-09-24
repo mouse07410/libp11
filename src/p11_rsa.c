@@ -30,6 +30,55 @@
 
 static int rsa_ex_index = 0;
 
+static void
+util_fatal(const char *fmt, ...)
+{
+        va_list ap;
+
+        va_start(ap, fmt);
+        fprintf(stderr, "error: ");
+        vfprintf(stderr, fmt, ap);
+        fprintf(stderr, "\nAborting.\n");
+        va_end(ap);
+        exit(1);
+}
+
+static CK_ULONG
+get_mechanisms(PKCS11_CTX *ctx, CK_SLOT_ID slot, CK_MECHANISM_TYPE_PTR *pList, CK_FLAGS flags)
+{
+	CK_ULONG	m, n, ulCount = 0;
+	CK_RV		rv;
+
+	rv = CRYPTOKI_call(ctx, C_GetMechanismList(slot, *pList, &ulCount));
+	if (rv != CKR_OK)
+		util_fatal("C_GetMechanismList", rv);
+
+	*pList = calloc(ulCount, sizeof(**pList));
+	if (*pList == NULL)
+		util_fatal("calloc failed: %m");
+
+	rv = CRYPTOKI_call(ctx, C_GetMechanismList(slot, *pList, &ulCount));
+	if (rv != CKR_OK)
+		util_fatal("C_GetMechanismList", rv);
+
+	if (flags != (CK_FLAGS)-1) {
+		CK_MECHANISM_TYPE *mechs = *pList;
+		CK_MECHANISM_INFO info;
+
+		for (m = n = 0; n < ulCount; n++) {
+			rv = CRYPTOKI_call(ctx, C_GetMechanismInfo(slot, mechs[n], &info));
+			if (rv != CKR_OK)
+				continue;
+			if ((info.flags & flags) == flags)
+				mechs[m++] = mechs[n];
+		}
+		ulCount = m;
+	}
+
+	return ulCount;
+}
+
+
 #if OPENSSL_VERSION_NUMBER < 0x10100003L || defined(LIBRESSL_VERSION_NUMBER)
 #define EVP_PKEY_get0_RSA(key) ((key)->pkey.rsa)
 #endif
@@ -534,6 +583,14 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	PKCS11_KEY_private *kpriv = NULL;
 	PKCS11_SLOT_private *spriv = NULL;
 
+	CK_MECHANISM_TYPE *mechs = NULL;
+	CK_ULONG num_mechs = 0;
+
+#if defined(DEBUG) || 1
+	fprintf(stderr, "Entered pkcs11_pkey_rsa_decrypt() out=%p " 
+		" *outlen=%lu in=%p inlen=%lu\n", out, *outlen, in, inlen);
+#endif
+
 	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
 		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
 		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
@@ -547,9 +604,9 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	memset(&mechanism, 0, sizeof(CK_MECHANISM));
 	memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
 
-#ifdef DEBUG
-	fprintf(stderr, "Called pkcs11_pkey_rsa_decrypt() out=%p *outlen=%lu in=%p inlen=%lu\n",
-		out, *outlen, in, inlen);
+	//num_mechs = get_mechanisms(ctx, slot, &mechs, -1);
+#if defined(DEBUG) 
+	fprintf(stderr, "pkcs11_pkey_rsa_decrypt() got %lu mechanisms...\n", num_mechs);
 #endif
 
 	/* Get the padding type */
@@ -679,7 +736,14 @@ unlock:
 
 do_original:
 	if (rsa) RSA_free(rsa);
-	return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
+	if (out == NULL) {
+		rv = (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
+		if (rv >= 0)
+			return size;
+		else
+			return rv;
+	} else
+		return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
 }
 
 
