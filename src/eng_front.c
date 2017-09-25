@@ -281,6 +281,7 @@ static int bind_evp_pkey_methods(ENGINE *e)
 
 	int (*psign_init) (EVP_PKEY_CTX *ctx) = NULL;
 	int (*pdecr_init) (EVP_PKEY_CTX *ctx) = NULL;
+	int (*pencr_init) (EVP_PKEY_CTX *ctx) = NULL;
 
 	int (*psign) (EVP_PKEY_CTX *ctx,
 		unsigned char *sig, size_t *siglen,
@@ -288,28 +289,35 @@ static int bind_evp_pkey_methods(ENGINE *e)
 	int (*pdecr) (EVP_PKEY_CTX *ctx,
 		unsigned char *out, size_t *outlen,
 		const unsigned char *in, size_t inlen) = NULL;
+	int (*pencr) (EVP_PKEY_CTX *ctx,
+                unsigned char *out, size_t *outlen,
+                const unsigned char *in, size_t inlen) = NULL;
 
 	if (!(orig_evp_pkey_meth_rsa = (EVP_PKEY_METHOD *)EVP_PKEY_meth_find(EVP_PKEY_RSA)) ||
 	!(pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0)))
 			goto err;
 
 	EVP_PKEY_meth_copy(pmeth, orig_evp_pkey_meth_rsa);
-	EVP_PKEY_meth_get_sign(orig_evp_pkey_meth_rsa, &psign_init, &psign);
 
+	EVP_PKEY_meth_get_sign(orig_evp_pkey_meth_rsa, &psign_init, &psign);
 	if (!psign) /* psign_init may be NULL */
 		goto err;
-
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 
 	EVP_PKEY_meth_get_decrypt(orig_evp_pkey_meth_rsa, &pdecr_init, &pdecr);
 	if (!pdecr) /* pdecr_init may be NULL */
 		goto err;
-
 	EVP_PKEY_meth_set_decrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_decrypt);
+
+	EVP_PKEY_meth_get_encrypt(orig_evp_pkey_meth_rsa, &pencr_init, &pencr);
+	if (!pencr) /* pencr_init may be NULL */
+		goto err;
+	EVP_PKEY_meth_set_encrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_encrypt);
 
 	p11eng_evp_pkey_rsa = pmeth;
 	orig_pkey_rsa_sign  = psign;
 	orig_pkey_rsa_decrypt  = pdecr;
+	orig_pkey_rsa_encrypt  = pencr;
 
 	if (!ENGINE_set_pkey_meths(e, p11eng_pkey_meths))
 		goto err;

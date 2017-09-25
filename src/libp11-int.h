@@ -315,7 +315,17 @@ typedef int (*orig_pkey_rsa_decrypt_t)(EVP_PKEY_CTX *ctx,
 
 extern orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt;
 
-/* Access the random number generator */
+/* Our version of EVP_PKEY pkey_rsa_encrypt */
+extern int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *ctx, 
+		unsigned char *out, size_t *outlen,
+		const unsigned char *in, size_t inlen);
+
+typedef int (*orig_pkey_rsa_encrypt_t)(EVP_PKEY_CTX *ctx,
+		unsigned char *out, size_t *outlen,
+		const unsigned char *in, size_t inlen);
+                            
+extern orig_pkey_rsa_encrypt_t orig_pkey_rsa_encrypt;
+
 extern int pkcs11_seed_random(PKCS11_SLOT *, const unsigned char *s, unsigned int s_len);
 extern int pkcs11_generate_random(PKCS11_SLOT *, unsigned char *r, unsigned int r_len);
 

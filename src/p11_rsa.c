@@ -43,42 +43,6 @@ util_fatal(const char *fmt, ...)
         exit(1);
 }
 
-static CK_ULONG
-get_mechanisms(PKCS11_CTX *ctx, CK_SLOT_ID slot, CK_MECHANISM_TYPE_PTR *pList, CK_FLAGS flags)
-{
-	CK_ULONG	m, n, ulCount = 0;
-	CK_RV		rv;
-
-	rv = CRYPTOKI_call(ctx, C_GetMechanismList(slot, *pList, &ulCount));
-	if (rv != CKR_OK)
-		util_fatal("C_GetMechanismList", rv);
-
-	*pList = calloc(ulCount, sizeof(**pList));
-	if (*pList == NULL)
-		util_fatal("calloc failed: %m");
-
-	rv = CRYPTOKI_call(ctx, C_GetMechanismList(slot, *pList, &ulCount));
-	if (rv != CKR_OK)
-		util_fatal("C_GetMechanismList", rv);
-
-	if (flags != (CK_FLAGS)-1) {
-		CK_MECHANISM_TYPE *mechs = *pList;
-		CK_MECHANISM_INFO info;
-
-		for (m = n = 0; n < ulCount; n++) {
-			rv = CRYPTOKI_call(ctx, C_GetMechanismInfo(slot, mechs[n], &info));
-			if (rv != CKR_OK)
-				continue;
-			if ((info.flags & flags) == flags)
-				mechs[m++] = mechs[n];
-		}
-		ulCount = m;
-	}
-
-	return ulCount;
-}
-
-
 #if OPENSSL_VERSION_NUMBER < 0x10100003L || defined(LIBRESSL_VERSION_NUMBER)
 #define EVP_PKEY_get0_RSA(key) ((key)->pkey.rsa)
 #endif
@@ -448,7 +412,6 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 
 	switch (pad) {
 		case RSA_PKCS1_PSS_PADDING:
-			fprintf(stderr, "RSA_PSS\n");
 			if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
 				goto do_original;
 			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0)
@@ -463,10 +426,11 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 					saltlen--;
 			}
 
+#if defined(DEBUG)
 			fprintf(stderr,"saltlen=%d hashAlg=%s mgf=MGF1-%s \n",
 				saltlen, OBJ_nid2sn(EVP_MD_type(sigmd)),
 				OBJ_nid2sn(EVP_MD_type(mgf1md)));
-
+#endif /* DEBUG */
 			/* make up a CK_MECHANISM */
 			memset(&pss_params, 0, sizeof(CK_RSA_PKCS_PSS_PARAMS));
 			switch (EVP_MD_type(sigmd)) {
@@ -559,7 +523,7 @@ do_original:
 	return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
 }
 
-/* Support for RSA-PKCS-OAEP encryption */
+/* Support for RSA-PKCS-OAEP decryption */
 orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
 
 int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
@@ -586,7 +550,7 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	CK_MECHANISM_TYPE *mechs = NULL;
 	CK_ULONG num_mechs = 0;
 
-#if defined(DEBUG) || 1
+#if defined(DEBUG)
 	fprintf(stderr, "Entered pkcs11_pkey_rsa_decrypt() out=%p " 
 		" *outlen=%lu in=%p inlen=%lu\n", out, *outlen, in, inlen);
 #endif
@@ -603,27 +567,27 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 
 	memset(&mechanism, 0, sizeof(CK_MECHANISM));
 	memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
+	memset(out_buf, 0, sizeof(out_buf));
 
-	//num_mechs = get_mechanisms(ctx, slot, &mechs, -1);
-#if defined(DEBUG) 
-	fprintf(stderr, "pkcs11_pkey_rsa_decrypt() got %lu mechanisms...\n", num_mechs);
-#endif
+	size = sizeof(out_buf);
 
 	/* Get the padding type */
 	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
 
 	switch (pad) {
 		case RSA_PKCS1_OAEP_PADDING:
+#if defined(DEBUG)
 			fprintf(stderr, "RSA_OAEP\n");
+#endif
 			if (EVP_PKEY_CTX_get_rsa_oaep_md(evp_pkey_ctx, &oaep_md) <= 0)
 				goto do_original;
 			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1_md) <= 0)
 				goto do_original;
-
+#if defined(DEBUG)
 			fprintf(stderr, "hashAlg=%s mgf=MGF1-%s \n",
 				OBJ_nid2sn(EVP_MD_type(oaep_md)),
 				OBJ_nid2sn(EVP_MD_type(mgf1_md)));
-
+#endif
 			/* make up a CK_MECHANISM */
 
 			switch (EVP_MD_type(oaep_md)) {
@@ -692,11 +656,8 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                 	break;
 		default:
 			fprintf(stderr, "not RSA-OAEP padding: %d\n", pad);
-			break;
+			goto do_original;
 	} /* end switch(pad) */
-
-	size = sizeof(out_buf);
-	memset(out_buf, 0, sizeof(out_buf));
 
 	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
 	
@@ -736,16 +697,46 @@ unlock:
 
 do_original:
 	if (rsa) RSA_free(rsa);
-	if (out == NULL) {
+	if (out == NULL || *outlen == 0) {
 		rv = (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
-		if (rv >= 0)
+		if (rv >= 0) {
+			*outlen = size;
 			return size;
-		else
+		} else
 			return rv;
 	} else
 		return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
 }
 
+
+/* Support for RSA-PKCS-OAEP encryption */
+orig_pkey_rsa_encrypt_t orig_pkey_rsa_encrypt = NULL;
+
+int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
+                            unsigned char *out, size_t *outlen,
+                            const unsigned char *in, size_t inlen)
+{
+	unsigned char out_buf[4096];
+	EVP_PKEY *pkey = NULL;
+	int rv = 0;
+	CK_ULONG size = sizeof(out_buf);
+
+#if defined(DEBUG)
+	fprintf(stderr, "pkcs11_pkey_rsa_encrypt(): out=%p outlen=%lu "
+		" in=%p inlen=%lu\n", out, *outlen, in, inlen);
+#endif
+	memset(out_buf, 0, sizeof(out_buf));
+
+        if (out == NULL || *outlen == 0) {
+                rv = (*orig_pkey_rsa_encrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
+                if (rv >= 0) {
+			*outlen = size;
+                        return size;
+                } else
+                        return rv;
+        } else 
+		(*orig_pkey_rsa_encrypt)(evp_pkey_ctx, out, outlen, in, inlen);
+}
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
