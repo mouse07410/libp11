@@ -506,7 +506,6 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 		rv = CRYPTOKI_call(ctx,
 			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
 	/* we will check rv after unlocking */ 
-	*siglen = size;
 	
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
@@ -514,7 +513,8 @@ unlock:
 	if (rv != CKR_OK)
 		goto do_original;
 		
-	return size;
+	*siglen = size;
+	return 1;
 
 do_original:
 	if (rsa)
@@ -674,18 +674,16 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	
 	/* we will check rv after unlocking */ 
 
-	/* Make sure we aren't overstepping provided output buffer size */
-	if (out == NULL || *outlen == 0 || *outlen >= size)
-		*outlen = size;
-	
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 
 	if (rv != CKR_OK)
 		goto do_original;
 		
-	if (out != NULL) {
+	if (out != NULL) { /* real decryption request - not just a query for output size */
 		/* Validate output buffer size before copying to there */
+		/* Because if the output buffer was provided - its size "*outlen" should */
+		/* be meaningful                                                         */
 		if (*outlen < size) {
 			fprintf(stderr, "pkcs11_pkey_rsa_decrypt(): for %d padding "
 				"output buffer (%lu bytes) too small! (need %lu)\n",
@@ -694,15 +692,24 @@ unlock:
 		}
 		memcpy(out, out_buf, size);
 	}
-	return size;
+	/* Make sure we aren't overstepping provided output buffer size */
+	if (*outlen >= size || out == NULL || *outlen == 0)
+		*outlen = size;
+	
+	return 1;
 
 do_original:
 	if (rsa) RSA_free(rsa);
+
+	/* To accommodate for OpenSSL inability to deal with out==NULL when */
+	/* the key is engine-provided rather than taken from a disk file,   */
+	/* but the token does not support the padding, so it has to be done */
+	/* by the original pley_rsa_decrypt()                               */
 	if (out == NULL || *outlen == 0) {
 		rv = (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
 		if (rv >= 0) {
 			*outlen = size;
-			return size;
+			return 1;
 		} else
 			return rv;
 	} else
@@ -717,7 +724,7 @@ int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                             unsigned char *out, size_t *outlen,
                             const unsigned char *in, size_t inlen)
 {
-	unsigned char out_buf[4096];
+	unsigned char out_buf[20480];
 	EVP_PKEY *pkey = NULL;
 	int rv = 0;
 	CK_ULONG size = sizeof(out_buf);
@@ -728,11 +735,15 @@ int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 #endif
 	memset(out_buf, 0, sizeof(out_buf));
 
+	/* To accommodate for OpenSSL inability to deal with out==NULL when */
+	/* the key is engine-provided rather than taken from a disk file,   */
+	/* but the token does not support the padding, so it has to be done */
+	/* by the original pley_rsa_decrypt()                               */
         if (out == NULL || *outlen == 0) {
                 rv = (*orig_pkey_rsa_encrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
                 if (rv >= 0) {
 			*outlen = size;
-                        return size;
+                        return 1;
                 } else
                         return rv;
         } else 
