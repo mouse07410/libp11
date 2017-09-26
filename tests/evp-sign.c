@@ -188,7 +188,9 @@ int main(int argc, char **argv)
 	ERR_clear_error();
 
 	ENGINE_load_builtin_engines();
+fprintf(stderr, "before calling ENGINE_by_id(\"pkcs11\")...\n");
 	e = ENGINE_by_id("pkcs11");
+fprintf(stderr, "after calling ENGINE_by_id(\"pkcs11\") e=%p\n", e);
 	if (e == NULL) {
 		display_openssl_errors(__LINE__);
 		exit(1);

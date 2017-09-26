@@ -387,33 +387,33 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	PKCS11_KEY_private *kpriv = NULL;
 	PKCS11_SLOT_private *spriv = NULL;
 
+#if defined(DEBUG)
+	fprintf(stderr, "Entered pkcs11_pkey_rsa_sign(): sig=%p *siglen=%lu tbs=%p tbslen=%lu\n",
+		sig, *siglen, tbs, tbslen);
+#endif
 	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
 		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
 		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
 			goto do_original;
 
-	EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd);
+	if (!rsa || !pkey)
+		goto do_original;
 
 	slot = KEY2SLOT(key);
 	ctx = KEY2CTX(key);
 	kpriv = PRIVKEY(key);
 	spriv = PRIVSLOT(slot);
 
-	if (!rsa || !pkey)
+	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
 		goto do_original;
-
-	if (sigmd) {
-		if (tbslen != (size_t)EVP_MD_size(sigmd)) {
-			goto do_original;
-		}
-	}
+	//if (tbslen != (size_t)EVP_MD_size(sigmd)) {
+	//	goto do_original;
+	//}
 
 	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
 
 	switch (pad) {
 		case RSA_PKCS1_PSS_PADDING:
-			if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
-				goto do_original;
 			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0)
 				goto do_original;
 			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(evp_pkey_ctx, &saltlen))
@@ -485,8 +485,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			/* Add future paddings here */
 			/* TODO we could do any RSA padding here too! */
 		default:
-			fprintf(stderr, "not RSA PSS padding: %d\n", pad);
-		goto do_original;
+			goto do_original;
 	} /* end switch(pad) */
 
 	/*
@@ -506,7 +505,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
 			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
-	/* check rv after unlocking */ 
+	/* we will check rv after unlocking */ 
 	*siglen = size;
 	
 unlock:
@@ -531,7 +530,7 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                             const unsigned char *in, size_t inlen)
 {
 	int ret;
-	unsigned char out_buf[4096];
+	unsigned char out_buf[20480];
 	EVP_PKEY *pkey = NULL;
 	RSA *rsa = NULL;
 	const EVP_MD *oaep_md = NULL, *mgf1_md = NULL;
@@ -655,7 +654,9 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                 	mechanism.ulParameterLen = 0;
                 	break;
 		default:
+#if defined(DEBUG)
 			fprintf(stderr, "not RSA-OAEP padding: %d\n", pad);
+#endif
 			goto do_original;
 	} /* end switch(pad) */
 
@@ -722,7 +723,7 @@ int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	CK_ULONG size = sizeof(out_buf);
 
 #if defined(DEBUG)
-	fprintf(stderr, "pkcs11_pkey_rsa_encrypt(): out=%p outlen=%lu "
+	fprintf(stderr, "pkcs11_pkey_rsa_encrypt(): out=%p *outlen=%lu "
 		" in=%p inlen=%lu\n", out, *outlen, in, inlen);
 #endif
 	memset(out_buf, 0, sizeof(out_buf));

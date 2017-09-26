@@ -312,7 +312,7 @@ static int bind_evp_pkey_methods(ENGINE *e)
 	EVP_PKEY_meth_get_encrypt(orig_evp_pkey_meth_rsa, &pencr_init, &pencr);
 	if (!pencr) /* pencr_init may be NULL */
 		goto err;
-	EVP_PKEY_meth_set_encrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_encrypt);
+	EVP_PKEY_meth_set_encrypt(pmeth, pencr_init, pkcs11_pkey_rsa_encrypt);
 
 	p11eng_evp_pkey_rsa = pmeth;
 	orig_pkey_rsa_sign  = psign;
