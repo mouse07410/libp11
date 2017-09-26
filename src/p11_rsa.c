@@ -83,6 +83,12 @@ static int pkcs11_mechanism(CK_MECHANISM *mechanism, const int padding)
 	case RSA_X931_PADDING:
 		mechanism->mechanism = CKM_RSA_X9_31;
 		break;
+	case RSA_PKCS1_OAEP_PADDING:
+		mechanism->mechanism = CKM_RSA_PKCS_OAEP;
+		break;
+	case RSA_PKCS1_PSS_PADDING:
+		mechanism->mechanism = CKM_RSA_PKCS_PSS;
+		break;
 	default:
 		fprintf(stderr, "PKCS#11: Unsupported padding type\n");
 		return -1;
@@ -149,9 +155,21 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	CK_MECHANISM mechanism;
 	CK_ULONG size = flen;
 	CK_RV rv;
+	CK_RSA_PKCS_OAEP_PARAMS oaep_params; /* supports only SHA-1 for now */
 
 	if (pkcs11_mechanism(&mechanism, padding) < 0)
 		return -1;
+
+	if (padding == RSA_PKCS1_OAEP_PADDING) {
+		memset(&oaep_params, 0, sizeof(oaep_params));
+		oaep_params.hashAlg = CKM_SHA_1;
+		oaep_params.mgf     = CKG_MGF1_SHA1;
+		oaep_params.source  = 0UL;
+		oaep_params.pSourceData = NULL;
+		oaep_params.ulSourceDataLen = 0;
+		mechanism.pParameter = &oaep_params;
+		mechanism.ulParameterLen = sizeof(oaep_params);
+	}
 
 	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
 	rv = CRYPTOKI_call(ctx,
