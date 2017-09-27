@@ -706,6 +706,7 @@ ECDH_METHOD *PKCS11_get_ecdh_method(void)
 
 #endif /* OPENSSL_VERSION_NUMBER */
 
+
 PKCS11_KEY_ops pkcs11_ec_ops_s = {
 	EVP_PKEY_EC,
 	pkcs11_get_evp_key_ec,

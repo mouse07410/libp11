@@ -193,6 +193,23 @@ int pkcs11_relogin(PKCS11_SLOT * slot);
 extern PKCS11_KEY_ops pkcs11_rsa_ops;
 extern PKCS11_KEY_ops *pkcs11_ec_ops;
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100002L || defined(BUILD_ECDH_102)
+/**
+ * @param out returned secret
+ * @param outlen length of returned secret
+ * @param ecdh_mechanism CKM_ECDH1_DERIVE, CKM_ECDH1_COFACTOR_DERIVE or others in future
+ * @param ec_params ptr to CK_ECDH1_DERIVE_PARAMS or in future CK_ECMQV_DERIVE_PARAMS
+ * @param outnewkey ptr to CK_OBJECT_HANDLE
+ * @param key optional returned private key object
+ */
+
+extern int pkcs11_ecdh_derive_internal(unsigned char **out, size_t *out_len,
+		const unsigned long ecdh_mechanism,
+		const void * ec_params,
+		void * outnewkey, /* CK_OBJECT_HANDLE */
+		PKCS11_KEY * key);
+#endif /* OPENSSL_VERSION_NUMBER >= 0x10100002L || defined(BUILD_ECDH_102) */
+
 /* Internal implementation of current features */
 
 /* Allocate the context */
