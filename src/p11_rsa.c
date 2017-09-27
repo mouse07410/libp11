@@ -28,6 +28,8 @@
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
 
+#define DEBUG 1
+
 static int rsa_ex_index = 0;
 
 static void
@@ -184,6 +186,10 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 
 	if (rv) {
 		CKRerr(CKR_F_PKCS11_PRIVATE_DECRYPT, rv);
+#if defined(DEBUG)
+		fprintf(stderr, "mechanism: %lu padding: %d\n", 
+			mechanism.mechanism, padding);
+#endif /* DEBUG */
 		return -1;
 	}
 
