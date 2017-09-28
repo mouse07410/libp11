@@ -176,12 +176,20 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
 	rv = CRYPTOKI_call(ctx,
 		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
+#if defined(DEBUG)
+	if (rv <= 0)
+		fprintf(stderr, "pkcs11_private_decrypt: C_DecryptInit() returned %d\n", rv);
+#endif /* DEBUG */
 	if (kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key);
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
 			C_Decrypt(spriv->session, (CK_BYTE *)from, size,
 				(CK_BYTE_PTR)to, &size));
+#if defined(DEBUG)
+	if (rv <= 0)
+		fprintf(stderr, "pkcs11_private_decrypt: C_Decrypt() returned %d\n", rv);
+#endif /* DEBUG */
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 
 	if (rv) {
