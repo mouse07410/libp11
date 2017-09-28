@@ -295,7 +295,7 @@ static int bind_evp_pkey_methods(ENGINE *e)
                 const unsigned char *in, size_t inlen) = NULL;
 
 	if (!(orig_evp_pkey_meth_rsa = (EVP_PKEY_METHOD *)EVP_PKEY_meth_find(EVP_PKEY_RSA)) ||
-	!(pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0)))
+	!(pmeth = EVP_PKEY_meth_new(EVP_PKEY_RSA, EVP_PKEY_FLAG_AUTOARGLEN)))
 			goto err;
 
 	EVP_PKEY_meth_copy(pmeth, orig_evp_pkey_meth_rsa);
