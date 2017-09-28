@@ -28,9 +28,7 @@
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
 
-#define DEBUG 1
-
-static int rsa_ex_index = 0;
+int rsa_ex_index = 0; /* make it accessible by p11_pkey.c */
 
 static void
 util_fatal(const char *fmt, ...)
@@ -159,6 +157,10 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	CK_RV rv;
 	CK_RSA_PKCS_OAEP_PARAMS oaep_params; /* supports only SHA-1 for now */
 
+#if defined(DEBUG)
+	fprintf(stderr, "%s:%d pkcs11_private_decrypt: mech=%lu padding=%d\n",
+		__FILE__, __LINE__, mechanism.mechanism, padding);
+#endif /* DEBUG */
 	if (pkcs11_mechanism(&mechanism, padding) < 0)
 		return -1;
 
@@ -177,8 +179,8 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	rv = CRYPTOKI_call(ctx,
 		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
 #if defined(DEBUG)
-	if (rv <= 0)
-		fprintf(stderr, "pkcs11_private_decrypt: C_DecryptInit() returned %d\n", rv);
+	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN)
+		fprintf(stderr, "%s:%d pkcs11_private_decrypt: C_DecryptInit() returned %lu\n", __FILE__, __LINE__, rv);
 #endif /* DEBUG */
 	if (kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key);
@@ -187,16 +189,16 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 			C_Decrypt(spriv->session, (CK_BYTE *)from, size,
 				(CK_BYTE_PTR)to, &size));
 #if defined(DEBUG)
-	if (rv <= 0)
-		fprintf(stderr, "pkcs11_private_decrypt: C_Decrypt() returned %d\n", rv);
+	if (rv != CKR_OK)
+		fprintf(stderr, "%s:%d pkcs11_private_decrypt: C_Decrypt() returned %lu\n", __FILE__, __LINE__, rv);
 #endif /* DEBUG */
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 
 	if (rv) {
 		CKRerr(CKR_F_PKCS11_PRIVATE_DECRYPT, rv);
 #if defined(DEBUG)
-		fprintf(stderr, "mechanism: %lu padding: %d\n", 
-			mechanism.mechanism, padding);
+		fprintf(stderr, "%s:%d mechanism: %lu padding: %d\n", 
+			__FILE__, __LINE__, mechanism.mechanism, padding);
 #endif /* DEBUG */
 		return -1;
 	}
@@ -392,395 +394,6 @@ int (*RSA_meth_get_priv_dec(const RSA_METHOD *meth))
 
 #endif
 
-/*
- * We only do CKM_RSA_PKCS_PSS
- * if we can not handle this, call the original pkey_rsa_sign
- */
-
-orig_pkey_rsa_sign_t orig_pkey_rsa_sign = NULL;
-
-int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
-                         size_t *siglen, const unsigned char *tbs,
-                         size_t tbslen)
-{
-	int ret;
-	EVP_PKEY *pkey = NULL;
-	RSA *rsa = NULL;
-	const EVP_MD *sigmd = NULL, *mgf1md = NULL;
-	int pad = -1;
-	CK_RSA_PKCS_PSS_PARAMS pss_params;
-	ASN1_STRING *os = NULL;
-	int saltlen, rv = 0;
-	CK_MECHANISM  mechanism;
-	CK_ULONG size = *siglen;
-	PKCS11_KEY *key = NULL;
-	PKCS11_SLOT *slot = NULL;
-	PKCS11_CTX *ctx = NULL;
-	PKCS11_KEY_private *kpriv = NULL;
-	PKCS11_SLOT_private *spriv = NULL;
-
-#if defined(DEBUG)
-	fprintf(stderr, "Entered pkcs11_pkey_rsa_sign(): sig=%p *siglen=%lu tbs=%p tbslen=%lu\n",
-		sig, *siglen, tbs, tbslen);
-#endif
-	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
-		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
-		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
-			goto do_original;
-
-	if (!rsa || !pkey)
-		goto do_original;
-
-	slot = KEY2SLOT(key);
-	ctx = KEY2CTX(key);
-	kpriv = PRIVKEY(key);
-	spriv = PRIVSLOT(slot);
-
-	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
-		goto do_original;
-	//if (tbslen != (size_t)EVP_MD_size(sigmd)) {
-	//	goto do_original;
-	//}
-
-	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
-
-	switch (pad) {
-		case RSA_PKCS1_PSS_PADDING:
-			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0)
-				goto do_original;
-			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(evp_pkey_ctx, &saltlen))
-				goto do_original;
-			if (saltlen == -1)
-				saltlen = EVP_MD_size(sigmd);
-			else if (saltlen == -2) {
-				saltlen = EVP_PKEY_size(pkey) - EVP_MD_size(sigmd) - 2;
-				if (((EVP_PKEY_bits(pkey) - 1) & 0x7) == 0)
-					saltlen--;
-			}
-
-#if defined(DEBUG)
-			fprintf(stderr,"saltlen=%d hashAlg=%s mgf=MGF1-%s \n",
-				saltlen, OBJ_nid2sn(EVP_MD_type(sigmd)),
-				OBJ_nid2sn(EVP_MD_type(mgf1md)));
-#endif /* DEBUG */
-			/* make up a CK_MECHANISM */
-			memset(&pss_params, 0, sizeof(CK_RSA_PKCS_PSS_PARAMS));
-			switch (EVP_MD_type(sigmd)) {
-				case NID_sha1:
-					pss_params.hashAlg = CKM_SHA_1;
-					break;
-				case NID_sha256:
-					pss_params.hashAlg = CKM_SHA256;
-					break;
-				case NID_sha512:
-					pss_params.hashAlg = CKM_SHA512;
-					break;
-				case NID_sha384:
-					pss_params.hashAlg = CKM_SHA384;
-					break;
-				case NID_sha224:
-					pss_params.hashAlg = CKM_SHA224;
-					break;
-				default:
-					goto do_original;
-			}
-
-			switch (EVP_MD_type(mgf1md)) {
-				case NID_sha1:
-					pss_params.mgf = CKG_MGF1_SHA1;
-					break;
-				case NID_sha256:
-					pss_params.mgf = CKG_MGF1_SHA256;
-					break;
-				case NID_sha512:
-					pss_params.mgf = CKG_MGF1_SHA512;
-					break;
-				case NID_sha384:
-					pss_params.mgf =  CKG_MGF1_SHA384;
-					break;
-				case NID_sha224:
-					pss_params.mgf =  CKG_MGF1_SHA224;
-					break;
-				default:
-				    goto do_original;
-			}
-
-			pss_params.sLen = saltlen;
-
-
-			memset(&mechanism, 0, sizeof(CK_MECHANISM));
-
-			mechanism.mechanism = CKM_RSA_PKCS_PSS;
-			mechanism.pParameter = &pss_params;
-			mechanism.ulParameterLen = sizeof(pss_params);
-			break;
-			/* Add future paddings here */
-			/* TODO we could do any RSA padding here too! */
-		default:
-			goto do_original;
-	} /* end switch(pad) */
-
-	/*
-	 * will try for this mechanism for now. 
-	 * TODO We could first check if token supports it or not.
-	 */
-
-
-	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
-	/* Try signing first, as applications are more likely to use it */
-	rv = CRYPTOKI_call(ctx,
-		C_SignInit(spriv->session, &mechanism, kpriv->object));
-
-	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
-	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
-		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
-	if (!rv)
-		rv = CRYPTOKI_call(ctx,
-			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
-	/* we will check rv after unlocking */ 
-	
-unlock:
-	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
-
-	if (rv != CKR_OK)
-		goto do_original;
-		
-	*siglen = size;
-	return 1;
-
-do_original:
-	if (rsa)
-	    RSA_free(rsa);
-	return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
-}
-
-/* Support for RSA-PKCS-OAEP decryption */
-orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
-
-int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
-                            unsigned char *out, size_t *outlen,
-                            const unsigned char *in, size_t inlen)
-{
-	int ret;
-	unsigned char out_buf[20480];
-	EVP_PKEY *pkey = NULL;
-	RSA *rsa = NULL;
-	const EVP_MD *oaep_md = NULL, *mgf1_md = NULL;
-	int pad = -1;
-	CK_RSA_PKCS_OAEP_PARAMS oaep_params;
-	ASN1_STRING *os = NULL;
-	int rv = 0;
-	CK_MECHANISM  mechanism;
-	CK_ULONG size = *outlen;
-	PKCS11_KEY *key = NULL;
-	PKCS11_SLOT *slot = NULL;
-	PKCS11_CTX *ctx = NULL;
-	PKCS11_KEY_private *kpriv = NULL;
-	PKCS11_SLOT_private *spriv = NULL;
-
-	CK_MECHANISM_TYPE *mechs = NULL;
-	CK_ULONG num_mechs = 0;
-
-#if defined(DEBUG)
-	fprintf(stderr, "Entered pkcs11_pkey_rsa_decrypt() out=%p " 
-		" *outlen=%lu in=%p inlen=%lu\n", out, *outlen, in, inlen);
-#endif
-
-	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
-		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
-		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
-			goto do_original;
-
-	slot  = KEY2SLOT(key);
-	ctx   = KEY2CTX(key);
-	kpriv = PRIVKEY(key);
-	spriv = PRIVSLOT(slot);
-
-	memset(&mechanism, 0, sizeof(CK_MECHANISM));
-	memset(&oaep_params, 0, sizeof(CK_RSA_PKCS_OAEP_PARAMS));
-	memset(out_buf, 0, sizeof(out_buf));
-
-	size = sizeof(out_buf);
-
-	/* Get the padding type */
-	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
-
-	switch (pad) {
-		case RSA_PKCS1_OAEP_PADDING:
-#if defined(DEBUG)
-			fprintf(stderr, "RSA_OAEP\n");
-#endif
-			if (EVP_PKEY_CTX_get_rsa_oaep_md(evp_pkey_ctx, &oaep_md) <= 0)
-				goto do_original;
-			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1_md) <= 0)
-				goto do_original;
-#if defined(DEBUG)
-			fprintf(stderr, "hashAlg=%s mgf=MGF1-%s \n",
-				OBJ_nid2sn(EVP_MD_type(oaep_md)),
-				OBJ_nid2sn(EVP_MD_type(mgf1_md)));
-#endif
-			/* make up a CK_MECHANISM */
-
-			switch (EVP_MD_type(oaep_md)) {
-				case NID_sha224:
-					oaep_params.hashAlg = CKM_SHA224;
-					oaep_params.mgf =  CKG_MGF1_SHA224;
-					break;
-				case NID_sha256:
-					oaep_params.hashAlg = CKM_SHA256;
-					oaep_params.mgf = CKG_MGF1_SHA256;
-					break;
-				case NID_sha384:
-					oaep_params.hashAlg = CKM_SHA384;
-					oaep_params.mgf =  CKG_MGF1_SHA384;
-					break;
-				case NID_sha512:
-					oaep_params.hashAlg = CKM_SHA512;
-					oaep_params.mgf = CKG_MGF1_SHA512;
-					break;
-				default:
-					/* fallthrough to SHA-1 as default */
-				case NID_sha1:
-					oaep_params.hashAlg = CKM_SHA_1;
-					oaep_params.mgf = CKG_MGF1_SHA1;
-					break;
-			} /* end switch(oaep_md) */
-			
-			switch (EVP_MD_type(mgf1_md)) {
-				case NID_sha1:
-					oaep_params.mgf = CKG_MGF1_SHA1;
-					break;
-				case NID_sha224:
-					oaep_params.mgf =  CKG_MGF1_SHA224;
-					break;
-				case NID_sha256:
-					oaep_params.mgf = CKG_MGF1_SHA256;
-					break;
-				case NID_sha384:
-					oaep_params.mgf =  CKG_MGF1_SHA384;
-					break;
-				case NID_sha512:
-					oaep_params.mgf = CKG_MGF1_SHA512;
-					break;
-				default:
-					oaep_params.mgf = CKG_MGF1_SHA1;
-					break;
-			} /* end switch(mgf1_md) */
-
-			/* These settings are compatible with OpenSSL 1.0.2L and 1.1.0+ */
-			/* We do not support OAEP "label" parameter yet... */
-			oaep_params.source = 0UL;  /* empty parameter (label) */
-			oaep_params.pSourceData = NULL; 
-			oaep_params.ulSourceDataLen = 0;
-
-			mechanism.mechanism = CKM_RSA_PKCS_OAEP;
-			mechanism.pParameter = &oaep_params;
-			mechanism.ulParameterLen = sizeof(oaep_params);
-
-			break;
-
-			/* Add future paddings here */
-			/* TODO we could do any RSA padding here too! */
-    		case CKM_RSA_PKCS:
-                	mechanism.pParameter = NULL;
-                	mechanism.ulParameterLen = 0;
-                	break;
-		default:
-#if defined(DEBUG)
-			fprintf(stderr, "not RSA-OAEP padding: %d\n", pad);
-#endif
-			goto do_original;
-	} /* end switch(pad) */
-
-	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
-	
-	rv = CRYPTOKI_call(ctx,
-		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
-
-	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
-	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
-		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
-	if (!rv)
-		rv = CRYPTOKI_call(ctx,
-			C_Decrypt(spriv->session, (CK_BYTE *) in, inlen, (CK_BYTE_PTR) out_buf, &size));
-	
-	/* we will check rv after unlocking */ 
-
-unlock:
-	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
-
-	if (rv != CKR_OK)
-		goto do_original;
-		
-	if (out != NULL) { /* real decryption request - not just a query for output size */
-		/* Validate output buffer size before copying to there */
-		/* Because if the output buffer was provided - its size "*outlen" should */
-		/* be meaningful                                                         */
-		if (*outlen < size) {
-			fprintf(stderr, "pkcs11_pkey_rsa_decrypt(): for %d padding "
-				"output buffer (%lu bytes) too small! (need %lu)\n",
-				pad, *outlen, size);
-			return -1;
-		}
-		memcpy(out, out_buf, size);
-	}
-	/* Make sure we aren't overstepping provided output buffer size */
-	if (*outlen >= size || out == NULL || *outlen == 0)
-		*outlen = size;
-	
-	return 1;
-
-do_original:
-	if (rsa) RSA_free(rsa);
-
-	/* To accommodate for OpenSSL inability to deal with out==NULL when */
-	/* the key is engine-provided rather than taken from a disk file,   */
-	/* but the token does not support the padding, so it has to be done */
-	/* by the original pley_rsa_decrypt()                               */
-	if (out == NULL || *outlen == 0) {
-		rv = (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
-		if (rv >= 0) {
-			*outlen = size;
-			return 1;
-		} else
-			return rv;
-	} else
-		return (*orig_pkey_rsa_decrypt)(evp_pkey_ctx, out, outlen, in, inlen);
-}
-
-
-/* Support for RSA-PKCS-OAEP encryption */
-orig_pkey_rsa_encrypt_t orig_pkey_rsa_encrypt = NULL;
-
-int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
-                            unsigned char *out, size_t *outlen,
-                            const unsigned char *in, size_t inlen)
-{
-	unsigned char out_buf[20480];
-	EVP_PKEY *pkey = NULL;
-	int rv = 0;
-	CK_ULONG size = sizeof(out_buf);
-
-#if defined(DEBUG)
-	fprintf(stderr, "pkcs11_pkey_rsa_encrypt(): out=%p *outlen=%lu "
-		" in=%p inlen=%lu\n", out, *outlen, in, inlen);
-#endif
-	memset(out_buf, 0, sizeof(out_buf));
-
-	/* To accommodate for OpenSSL inability to deal with out==NULL when */
-	/* the key is engine-provided rather than taken from a disk file,   */
-	/* but the token does not support the padding, so it has to be done */
-	/* by the original pley_rsa_decrypt()                               */
-        if (out == NULL || *outlen == 0) {
-                rv = (*orig_pkey_rsa_encrypt)(evp_pkey_ctx, out_buf, &size, in, inlen);
-                if (rv >= 0) {
-			*outlen = size;
-                        return 1;
-                } else
-                        return rv;
-        } else 
-		(*orig_pkey_rsa_encrypt)(evp_pkey_ctx, out, outlen, in, inlen);
-}
 
 static int pkcs11_rsa_priv_dec_method(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)

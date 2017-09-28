@@ -312,36 +312,19 @@ extern int pkcs11_store_certificate(PKCS11_TOKEN * token, X509 * x509,
 		PKCS11_CERT **ret_cert);
 
 /* Our version of EVP_PKEY pkey_rsa_sign */
-extern int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
-		const unsigned char *tbs, size_t tbslen);
-
 typedef int (*orig_pkey_rsa_sign_t)(EVP_PKEY_CTX *ctx,
 			unsigned char *sig, size_t *siglen,
 			const unsigned char *tbs,size_t tbslen);
 
-extern orig_pkey_rsa_sign_t orig_pkey_rsa_sign;
-
 /* Our version of EVP_PKEY pkey_rsa_decrypt */
-extern int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *ctx, 
-		unsigned char *out, size_t *outlen,
-		const unsigned char *in, size_t inlen);
-
 typedef int (*orig_pkey_rsa_decrypt_t)(EVP_PKEY_CTX *ctx, 
 		unsigned char *out, size_t *outlen,
 		const unsigned char *in, size_t inlen);
 
-extern orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt;
-
 /* Our version of EVP_PKEY pkey_rsa_encrypt */
-extern int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *ctx, 
-		unsigned char *out, size_t *outlen,
-		const unsigned char *in, size_t inlen);
-
 typedef int (*orig_pkey_rsa_encrypt_t)(EVP_PKEY_CTX *ctx,
 		unsigned char *out, size_t *outlen,
 		const unsigned char *in, size_t inlen);
-                            
-extern orig_pkey_rsa_encrypt_t orig_pkey_rsa_encrypt;
 
 extern int pkcs11_seed_random(PKCS11_SLOT *, const unsigned char *s, unsigned int s_len);
 extern int pkcs11_generate_random(PKCS11_SLOT *, unsigned char *r, unsigned int r_len);
