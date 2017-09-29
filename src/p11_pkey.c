@@ -47,7 +47,7 @@ int pkcs11_pkey_rsa_encrypt(EVP_PKEY_CTX *evp_pkey_ctx,
                             unsigned char *out, size_t *outlen,
                             const unsigned char *in, size_t inlen);
 
-static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa(ENGINE *e)
+static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 {
   EVP_PKEY_METHOD *orig_pmeth = NULL;
   EVP_PKEY_METHOD *pmeth      = NULL;
@@ -127,7 +127,7 @@ int PKCS11_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	};
 	static EVP_PKEY_METHOD *pkey_method_rsa = NULL;
 	if (pkey_method_rsa == NULL)
-		pkey_method_rsa = pkcs11_pkey_method_rsa(e);
+		pkey_method_rsa = pkcs11_pkey_method_rsa();
 	if (pkey_method_rsa == NULL)
 		return 0;
 	if (!pmeth) { /* get the list of supported nids */
