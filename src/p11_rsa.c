@@ -28,8 +28,6 @@
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
 
-#define DEBUG 1
-
 static int rsa_ex_index = 0;
 
 static void
@@ -410,6 +408,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	PKCS11_CTX *ctx = NULL;
 	PKCS11_KEY_private *kpriv = NULL;
 	PKCS11_SLOT_private *spriv = NULL;
+	unsigned char sig_buf[10480];
 
 #if defined(DEBUG)
 	fprintf(stderr, "Entered pkcs11_pkey_rsa_sign(): sig=%p *siglen=%lu tbs=%p tbslen=%lu\n",
@@ -417,31 +416,66 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 #endif
 	if (!(pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx)) ||
 		!(rsa = EVP_PKEY_get1_RSA(pkey)) ||
-		!(key = RSA_get_ex_data(rsa, rsa_ex_index)))
+	    !(key = RSA_get_ex_data(rsa, rsa_ex_index))) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d failed get smth pkey=%p rsa=%p key=%p\n",
+		  __FILE__, __LINE__, pkey, rsa, key);
+#endif /* DEBUG */
 			goto do_original;
+	}
 
-	if (!rsa || !pkey)
+	if (!rsa || !pkey) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d failed get smth pkey=%p rsa=%p\n",
+		  __FILE__, __LINE__, pkey, rsa);
+#endif /* DEBUG */
 		goto do_original;
-
+	}
+	
 	slot = KEY2SLOT(key);
 	ctx = KEY2CTX(key);
 	kpriv = PRIVKEY(key);
 	spriv = PRIVSLOT(slot);
 
-	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
+	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d cannot retrieve signature_md...\n", __FILE__,__LINE__);
+#endif /* DEBUG */
 		goto do_original;
-	//if (tbslen != (size_t)EVP_MD_size(sigmd)) {
-	//	goto do_original;
-	//}
+	}
+
+	if (tbslen != (size_t)EVP_MD_size(sigmd)) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d tbslen (%lu) not equal to digest size (%lu)...\n",
+		  __FILE__,__LINE__, tbslen, EVP_MD_size(sigmd));
+#endif /* DEBUG */
+		goto do_original;
+	}
 
 	EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
 
+#if defined(DEBUG)
+	fprintf(stderr, "%s:%d trying padding %d (PKCS=%d PSS=%d)\n", 
+		__FILE__, __LINE__, pad, RSA_PKCS1_PADDING,
+		RSA_PKCS1_PSS_PADDING);
+#endif /* DEBUG */
+	
 	switch (pad) {
 		case RSA_PKCS1_PSS_PADDING:
-			if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0)
+#if defined(DEBUG)
+		  fprintf(stderr, "%s:%d processing RSA-PSS padding\n",
+			  __FILE__, __LINE__);
+#endif /* DEBUG */
+		  if (EVP_PKEY_CTX_get_rsa_mgf1_md(evp_pkey_ctx, &mgf1md) <= 0) {
+		    fprintf(stderr, "%s:%d cannot retrieve rsa_mgf1_md\n", __FILE__,__LINE__);
+		    goto do_original;
+		  }
+		  if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(evp_pkey_ctx, &saltlen)) {
+#if defined(DEBUG)
+		    fprintf(stderr, "%s:%d cannot retrieve rsa_pss_saltlen\n", __FILE__, __LINE__);
+#endif /* DEBUG */
 				goto do_original;
-			if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(evp_pkey_ctx, &saltlen))
-				goto do_original;
+		  }
 			if (saltlen == -1)
 				saltlen = EVP_MD_size(sigmd);
 			else if (saltlen == -2) {
@@ -509,6 +543,11 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			/* Add future paddings here */
 			/* TODO we could do any RSA padding here too! */
 		default:
+#if defined(DEBUG)
+		  fprintf(stderr, "%s:%d fall-thru to do_original for %d padding\n",
+			  __FILE__, __LINE__, pad);
+#endif /* DEBUG */
+
 			goto do_original;
 	} /* end switch(pad) */
 
@@ -523,21 +562,41 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 	rv = CRYPTOKI_call(ctx,
 		C_SignInit(spriv->session, &mechanism, kpriv->object));
 
-	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
+	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d C_SignInit failed with %d\n", __FILE__, __LINE__, rv);
+#endif /* DEBUG */
+	  goto unlock;
+	}
 	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
+			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig_buf, &size));
 	/* we will check rv after unlocking */ 
 	
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 
-	if (rv != CKR_OK)
+	if (rv != CKR_OK) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d C_Sign failed with rv=%d, -> do_original\n",
+		  __FILE__, __LINE__, rv);
+#endif /* DEBUG */
 		goto do_original;
-		
+	}
+	
+	if (sig != NULL) {
+		if (*siglen >= size)
+			memcpy(sig, sig_buf, size);
+		else {
+			fprintf(stderr, "%s:%d buffer for signature (%lu bytes) too small!"
+				" Need %lu bytes!\n", __FILE__, __LINE__, *siglen, size);
+			return -1;
+		}
+	}
 	*siglen = size;
+
 	return 1;
 
 do_original:
@@ -701,9 +760,14 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 unlock:
 	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 
-	if (rv != CKR_OK)
-		goto do_original;
-		
+	if (rv != CKR_OK) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d C_Decrypt failed with %d\n",
+		  __FILE__, __LINE__, rv);
+#endif /* DEBUG */
+	  goto do_original;
+	}
+	
 	if (out != NULL) { /* real decryption request - not just a query for output size */
 		/* Validate output buffer size before copying to there */
 		/* Because if the output buffer was provided - its size "*outlen" should */
