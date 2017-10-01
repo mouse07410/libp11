@@ -186,9 +186,14 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 
         if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sigmd) <= 0)
                 goto do_original;
-        //if (tbslen != (size_t)EVP_MD_size(sigmd)) {
-        //      goto do_original;
-        //}
+        if (tbslen != (size_t)EVP_MD_size(sigmd)) {
+#if defined(DEBUG)
+	  fprintf(stderr, "%s:%d size of data to sign (%lu bytes) must "
+		  "match digest size (%lu bytes)\n",
+		  __FILE__, __LINE__, tbslen, EVP_MD_size(sigmd));
+#endif /* DEBUG */
+                goto do_original;
+        }
 
         EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &pad);
 
