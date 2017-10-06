@@ -30,9 +30,11 @@ int set_pss_oaep_md_and_mgf1(void *params, const EVP_MD *md,
 static EVP_PKEY_METHOD *orig_pkey_meth_rsa = NULL;
 
 /* direct pointers to original methods to fall back to if needed */
-static orig_pkey_rsa_sign_t    orig_pkey_rsa_sign    = NULL;
-static orig_pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
-static orig_pkey_rsa_encrypt_t orig_pkey_rsa_encrypt = NULL;
+static pkey_rsa_sign_t    orig_pkey_rsa_sign    = NULL;
+static pkey_rsa_decrypt_t orig_pkey_rsa_decrypt = NULL;
+static pkey_rsa_encrypt_t orig_pkey_rsa_encrypt = NULL;
+static pkey_rsa_signctx_t orig_pkey_rsa_signctx = NULL;
+static pkey_rsa_sctxini_t orig_pkey_rsa_sctxini = NULL;
 
 extern int rsa_ex_index;
 
@@ -55,6 +57,7 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	int (*psign_init) (EVP_PKEY_CTX *ctx) = NULL;
 	int (*pdecr_init) (EVP_PKEY_CTX *ctx) = NULL;
 	int (*pencr_init) (EVP_PKEY_CTX *ctx) = NULL;
+    int (*psctx_init) (EVP_PKEY_CTX *ctx, EVP_MD_CTX *md_ctx) = NULL;
 
 	int (*psign) (EVP_PKEY_CTX *ctx,
 			unsigned char *sig, size_t *siglen,
@@ -65,6 +68,8 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	int (*pencr) (EVP_PKEY_CTX *ctx,
 			unsigned char *out, size_t *outlen,
 			const unsigned char *in, size_t inlen) = NULL;
+    int (*psctx) (EVP_PKEY_CTX *ctx,
+            unsigned char *sig, size_t *siglen, EVP_MD_CTX *mctx) = NULL;
 
 	/* Retrieve original methods and create placeholder for custom ones */
 	if (!(orig_pmeth = (EVP_PKEY_METHOD *) EVP_PKEY_meth_find(EVP_PKEY_RSA))) {
@@ -89,6 +94,7 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	EVP_PKEY_meth_get_sign(orig_pmeth,    &psign_init, &psign);
 	EVP_PKEY_meth_get_decrypt(orig_pmeth, &pdecr_init, &pdecr);
 	EVP_PKEY_meth_get_encrypt(orig_pmeth, &pencr_init, &pencr);
+    EVP_PKEY_meth_get_signctx(orig_pmeth, &psctx_init, &psctx);
 
 	if (!psign || !pdecr || !pencr) {
 		fprintf(stderr, "%s:%d failed to get one of orig rsa methods "
@@ -102,12 +108,15 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	orig_pkey_rsa_sign    = psign;
 	orig_pkey_rsa_decrypt = pdecr;
 	orig_pkey_rsa_encrypt = pencr;
+    orig_pkey_rsa_sctxini = psctx_init; /* possibly/probably NULL */
+    orig_pkey_rsa_signctx = psctx;      /* possibly/probably NULL */
 
 	/* Hook our custom PSS- an OAEP-aware methods */
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 	EVP_PKEY_meth_set_decrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_decrypt);
 	EVP_PKEY_meth_set_encrypt(pmeth, pencr_init, pkcs11_pkey_rsa_encrypt);
-
+    /* nothing yet to override signctx_init() and signctx() - it's WIP */
+    
 	return pmeth;
 
 err:
