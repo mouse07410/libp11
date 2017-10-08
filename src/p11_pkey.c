@@ -57,7 +57,7 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	int (*psign_init) (EVP_PKEY_CTX *ctx) = NULL;
 	int (*pdecr_init) (EVP_PKEY_CTX *ctx) = NULL;
 	int (*pencr_init) (EVP_PKEY_CTX *ctx) = NULL;
-    int (*psctx_init) (EVP_PKEY_CTX *ctx, EVP_MD_CTX *md_ctx) = NULL;
+	int (*psctx_init) (EVP_PKEY_CTX *ctx, EVP_MD_CTX *md_ctx) = NULL;
 
 	int (*psign) (EVP_PKEY_CTX *ctx,
 			unsigned char *sig, size_t *siglen,
@@ -68,8 +68,8 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	int (*pencr) (EVP_PKEY_CTX *ctx,
 			unsigned char *out, size_t *outlen,
 			const unsigned char *in, size_t inlen) = NULL;
-    int (*psctx) (EVP_PKEY_CTX *ctx,
-            unsigned char *sig, size_t *siglen, EVP_MD_CTX *mctx) = NULL;
+	int (*psctx) (EVP_PKEY_CTX *ctx,
+			unsigned char *sig, size_t *siglen, EVP_MD_CTX *mctx) = NULL;
 
 	/* Retrieve original methods and create placeholder for custom ones */
 	if (!(orig_pmeth = (EVP_PKEY_METHOD *) EVP_PKEY_meth_find(EVP_PKEY_RSA))) {
@@ -94,7 +94,7 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	EVP_PKEY_meth_get_sign(orig_pmeth,    &psign_init, &psign);
 	EVP_PKEY_meth_get_decrypt(orig_pmeth, &pdecr_init, &pdecr);
 	EVP_PKEY_meth_get_encrypt(orig_pmeth, &pencr_init, &pencr);
-    EVP_PKEY_meth_get_signctx(orig_pmeth, &psctx_init, &psctx);
+	EVP_PKEY_meth_get_signctx(orig_pmeth, &psctx_init, &psctx);
 
 	if (!psign || !pdecr || !pencr) {
 		fprintf(stderr, "%s:%d failed to get one of orig rsa methods "
@@ -108,15 +108,15 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	orig_pkey_rsa_sign    = psign;
 	orig_pkey_rsa_decrypt = pdecr;
 	orig_pkey_rsa_encrypt = pencr;
-    orig_pkey_rsa_sctxini = psctx_init; /* possibly/probably NULL */
-    orig_pkey_rsa_signctx = psctx;      /* possibly/probably NULL */
+	orig_pkey_rsa_sctxini = psctx_init; /* possibly/probably NULL */
+	orig_pkey_rsa_signctx = psctx;      /* possibly/probably NULL */
 
 	/* Hook our custom PSS- an OAEP-aware methods */
 	EVP_PKEY_meth_set_sign(pmeth, psign_init, pkcs11_pkey_rsa_sign);
 	EVP_PKEY_meth_set_decrypt(pmeth, pdecr_init, pkcs11_pkey_rsa_decrypt);
 	EVP_PKEY_meth_set_encrypt(pmeth, pencr_init, pkcs11_pkey_rsa_encrypt);
-    /* nothing yet to override signctx_init() and signctx() - it's WIP */
-    
+	/* nothing yet to override signctx_init() and signctx() - it's WIP */
+
 	return pmeth;
 
 err:
@@ -268,14 +268,14 @@ unlock:
 		goto do_original;
 
 	if (sig != NULL) { /* sign for-real, not to find out sig buf size */
-	  /* Validate output buffer size before copying to there */
-	  /* if sig != NULL, *siglen value must be meanungful */
-	  if (*siglen < size) {
-	    fprintf(stderr, "pkcs11_pkey_rsa_sign(): output buffer "
-		    "(%lu bytes) too small! (need %lu)\n", *siglen, size);
-	    return -1;
-	  }
-	  memcpy(sig, out_buf, size);
+		/* Validate output buffer size before copying to there */
+		/* if sig != NULL, *siglen value must be meanungful */
+		if (*siglen < size) {
+			fprintf(stderr, "pkcs11_pkey_rsa_sign(): output buffer "
+					"(%lu bytes) too small! (need %lu)\n", *siglen, size);
+			return -1;
+		}
+		memcpy(sig, out_buf, size);
 	}
 
 	*siglen = size; /* should be no error by now */
@@ -285,14 +285,14 @@ do_original:
 	if (rsa)
 		RSA_free(rsa);
 	if (sig == NULL || *siglen == 0) {
-	  rv = (*orig_pkey_rsa_sign)(evp_pkey_ctx, out_buf, &size, tbs, tbslen);
-	  if (rv > 0) {
-	    *siglen = size;
-	    return 1;
-	  } else
-	    return rv;
+		rv = (*orig_pkey_rsa_sign)(evp_pkey_ctx, out_buf, &size, tbs, tbslen);
+		if (rv > 0) {
+			*siglen = size;
+			return 1;
+		} else
+			return rv;
 	} else
-	  return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
+		return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
 }
 
 /*
