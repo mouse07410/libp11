@@ -158,6 +158,7 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 		size_t tbslen)
 {
 	int ret;
+	unsigned char out_buf[20480];
 	EVP_PKEY *pkey = NULL;
 	RSA *rsa = NULL;
 	const EVP_MD *sigmd = NULL, *mgf1md = NULL;
@@ -253,11 +254,11 @@ int pkcs11_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx, unsigned char *sig,
 			C_SignInit(spriv->session, &mechanism, kpriv->object));
 
 	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
-	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
+	if (kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-				C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
+				C_Sign(spriv->session, (unsigned char *)tbs, tbslen, out_buf, &size));
 	/* we will check rv after unlocking */
 
 unlock:
@@ -266,13 +267,32 @@ unlock:
 	if (rv != CKR_OK)
 		goto do_original;
 
-	*siglen = size;
+	if (sig != NULL) { /* sign for-real, not to find out sig buf size */
+	  /* Validate output buffer size before copying to there */
+	  /* if sig != NULL, *siglen value must be meanungful */
+	  if (*siglen < size) {
+	    fprintf(stderr, "pkcs11_pkey_rsa_sign(): output buffer "
+		    "(%lu bytes) too small! (need %lu)\n", *siglen, size);
+	    return -1;
+	  }
+	  memcpy(sig, out_buf, size);
+	}
+
+	*siglen = size; /* should be no error by now */
 	return 1;
 
 do_original:
 	if (rsa)
 		RSA_free(rsa);
-	return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
+	if (sig == NULL || *siglen == 0) {
+	  rv = (*orig_pkey_rsa_sign)(evp_pkey_ctx, out_buf, &size, tbs, tbslen);
+	  if (rv > 0) {
+	    *siglen = size;
+	    return 1;
+	  } else
+	    return rv;
+	} else
+	  return (*orig_pkey_rsa_sign)(evp_pkey_ctx, sig, siglen, tbs, tbslen);
 }
 
 /*
@@ -392,7 +412,7 @@ int pkcs11_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 		fprintf(stderr, "%s:%d C_DecryptInit returned %lu\n", __FILE__, __LINE__, rv);
 #endif
 	if (rv != CKR_OK && rv != CKR_USER_NOT_LOGGED_IN) goto unlock;
-	if (rv == CKR_USER_NOT_LOGGED_IN || kpriv->always_authenticate == CK_TRUE)
+	if (kpriv->always_authenticate == CK_TRUE)
 		rv = pkcs11_authenticate(key); /* don't re-auth unless flag is set! */
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
