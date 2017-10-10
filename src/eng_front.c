@@ -202,7 +202,7 @@ static EVP_PKEY *load_privkey(ENGINE *engine, const char *s_key_id,
 		return 0;
 	pkey = ctx_load_privkey(ctx, s_key_id, ui_method, callback_data);
 	if (pkey)
-#if OPENSSL_VERSION_NUMBER < 0x01010000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 		pkey->engine = engine;
 #else
 		EVP_PKEY_set1_engine(pkey,engine);
