@@ -135,7 +135,7 @@ static void EVP_PKEY_meth_copy(EVP_PKEY_METHOD *dst, const EVP_PKEY_METHOD *src)
 
 #endif
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if OPENSSL_VERSION_NUMBER < 0x100020d0L || defined(LIBRESSL_VERSION_NUMBER)
 static void EVP_PKEY_meth_get_sign(EVP_PKEY_METHOD *pmeth,
 		int (**psign_init) (EVP_PKEY_CTX *ctx),
 		int (**psign) (EVP_PKEY_CTX *ctx,
@@ -228,7 +228,6 @@ static int pkcs11_params_pss(CK_RSA_PKCS_PSS_PARAMS *pss,
 	return 0;
 }
 
-#if 0 /* TODO */
 static int pkcs11_params_oaep(CK_RSA_PKCS_OAEP_PARAMS *oaep,
 		EVP_PKEY_CTX *ctx)
 {
@@ -256,7 +255,6 @@ static int pkcs11_params_oaep(CK_RSA_PKCS_OAEP_PARAMS *oaep,
 	oaep->ulSourceDataLen = 0;
 	return 0;
 }
-#endif
 
 static int pkcs11_try_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 		unsigned char *sig, size_t *siglen,
@@ -324,7 +322,7 @@ static int pkcs11_try_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 	if (!cpriv->sign_initialized)
 		CRYPTO_THREAD_unlock(cpriv->rwlock);
 #ifdef DEBUG
-	fprintf(stderr, "C_SignInit and or C_Sign rv = %u\n", rv);
+	fprintf(stderr, "%s:%d C_SignInit and or C_Sign rv = %u\n", __FILE__, __LINE__, rv);
 #endif
 
 	if (rv != 0)
