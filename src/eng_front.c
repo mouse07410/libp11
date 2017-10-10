@@ -209,7 +209,7 @@ static EVP_PKEY *load_privkey(ENGINE *engine, const char *s_key_id,
 #else
 #if defined(EVP_F_EVP_PKEY_SET1_ENGINE)
 		EVP_PKEY_set1_engine(pkey, engine);
-#endif /* EVP_F_EVP_PKEY_SET1_ENGINE */
+#endif /* EVP_F_EVP_PKEY_SET1_ENGINE - is this method available? */
 #endif /* OPENSSL older than 1.1.x */
 	return pkey;
 }
