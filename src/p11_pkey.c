@@ -42,27 +42,27 @@ struct evp_pkey_method_st {
 	int (*keygen) (EVP_PKEY_CTX *ctx, EVP_PKEY *pkey);
 	int (*sign_init) (EVP_PKEY_CTX *ctx);
 	int (*sign) (EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
-		const unsigned char *tbs, size_t tbslen);
+			const unsigned char *tbs, size_t tbslen);
 	int (*verify_init) (EVP_PKEY_CTX *ctx);
 	int (*verify) (EVP_PKEY_CTX *ctx,
-		const unsigned char *sig, size_t siglen,
-		const unsigned char *tbs, size_t tbslen);
+			const unsigned char *sig, size_t siglen,
+			const unsigned char *tbs, size_t tbslen);
 	int (*verify_recover_init) (EVP_PKEY_CTX *ctx);
 	int (*verify_recover) (EVP_PKEY_CTX *ctx,
-		unsigned char *rout, size_t *routlen,
-		const unsigned char *sig, size_t siglen);
+			unsigned char *rout, size_t *routlen,
+			const unsigned char *sig, size_t siglen);
 	int (*signctx_init) (EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx);
 	int (*signctx) (EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
-		EVP_MD_CTX *mctx);
+			EVP_MD_CTX *mctx);
 	int (*verifyctx_init) (EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx);
 	int (*verifyctx) (EVP_PKEY_CTX *ctx, const unsigned char *sig, int siglen,
-		EVP_MD_CTX *mctx);
+			EVP_MD_CTX *mctx);
 	int (*encrypt_init) (EVP_PKEY_CTX *ctx);
 	int (*encrypt) (EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outlen,
-		const unsigned char *in, size_t inlen);
+			const unsigned char *in, size_t inlen);
 	int (*decrypt_init) (EVP_PKEY_CTX *ctx);
 	int (*decrypt) (EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outlen,
-		const unsigned char *in, size_t inlen);
+			const unsigned char *in, size_t inlen);
 	int (*derive_init) (EVP_PKEY_CTX *ctx);
 	int (*derive) (EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen);
 	int (*ctrl) (EVP_PKEY_CTX *ctx, int type, int p1, void *p2);
@@ -186,36 +186,36 @@ static void EVP_PKEY_meth_get_decrypt(EVP_PKEY_METHOD *pmeth,
 static CK_MECHANISM_TYPE pkcs11_md2ckm(const EVP_MD *md)
 {
 	switch (EVP_MD_type(md)) {
-	case NID_sha1:
-		return CKM_SHA_1;
-	case NID_sha224:
-		return CKM_SHA224;
-	case NID_sha256:
-		return CKM_SHA256;
-	case NID_sha512:
-		return CKM_SHA512;
-	case NID_sha384:
-		return CKM_SHA384;
-	default:
-		return 0;
+		case NID_sha1:
+			return CKM_SHA_1;
+		case NID_sha224:
+			return CKM_SHA224;
+		case NID_sha256:
+			return CKM_SHA256;
+		case NID_sha512:
+			return CKM_SHA512;
+		case NID_sha384:
+			return CKM_SHA384;
+		default:
+			return 0;
 	}
 }
 
 static CK_RSA_PKCS_MGF_TYPE pkcs11_md2ckg(const EVP_MD *md)
 {
 	switch (EVP_MD_type(md)) {
-	case NID_sha1:
-		return CKG_MGF1_SHA1;
-	case NID_sha224:
-		return CKG_MGF1_SHA224;
-	case NID_sha256:
-		return CKG_MGF1_SHA256;
-	case NID_sha512:
-		return CKG_MGF1_SHA512;
-	case NID_sha384:
-		return CKG_MGF1_SHA384;
-	default:
-		return 0;
+		case NID_sha1:
+			return CKG_MGF1_SHA1;
+		case NID_sha224:
+			return CKG_MGF1_SHA224;
+		case NID_sha256:
+			return CKG_MGF1_SHA256;
+		case NID_sha512:
+			return CKG_MGF1_SHA512;
+		case NID_sha384:
+			return CKG_MGF1_SHA384;
+		default:
+			return 0;
 	}
 }
 
@@ -234,22 +234,22 @@ static int pkcs11_params_pss(CK_RSA_PKCS_PSS_PARAMS *pss,
 	if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(ctx, &salt_len))
 		return -1;
 	switch (salt_len) {
-	case -1:
-		salt_len = EVP_MD_size(sig_md);
-		break;
-	case -2:
-		evp_pkey = EVP_PKEY_CTX_get0_pkey(ctx);
-		if (evp_pkey == NULL)
-			return -1;
-		salt_len = EVP_PKEY_size(evp_pkey) - EVP_MD_size(sig_md) - 2;
-		if (((EVP_PKEY_bits(evp_pkey) - 1) & 0x7) == 0)
-			salt_len--;
-		if (salt_len < 0) /* integer underflow detected */
-			return -1;
+		case -1:
+			salt_len = EVP_MD_size(sig_md);
+			break;
+		case -2:
+			evp_pkey = EVP_PKEY_CTX_get0_pkey(ctx);
+			if (evp_pkey == NULL)
+				return -1;
+			salt_len = EVP_PKEY_size(evp_pkey) - EVP_MD_size(sig_md) - 2;
+			if (((EVP_PKEY_bits(evp_pkey) - 1) & 0x7) == 0)
+				salt_len--;
+			if (salt_len < 0) /* integer underflow detected */
+				return -1;
 	}
 #ifdef DEBUG
 	fprintf(stderr, "salt_len=%d sig_md=%s mdf1_md=%s\n",
-		salt_len, EVP_MD_name(sig_md), EVP_MD_name(mgf1_md));
+			salt_len, EVP_MD_name(sig_md), EVP_MD_name(mgf1_md));
 #endif
 
 	/* fill the CK_RSA_PKCS_PSS_PARAMS structure */
@@ -345,13 +345,13 @@ static int pkcs11_try_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 
 		CRYPTO_THREAD_write_lock(cpriv->rwlock);
 		rv = CRYPTOKI_call(ctx,
-			C_SignInit(spriv->session, &mechanism, kpriv->object));
+				C_SignInit(spriv->session, &mechanism, kpriv->object));
 		if (!rv && kpriv->always_authenticate == CK_TRUE)
 			rv = pkcs11_authenticate(key);
 	}
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-			C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
+				C_Sign(spriv->session, (unsigned char *)tbs, tbslen, sig, &size));
 	cpriv->sign_initialized = !rv && sig == NULL;
 	if (!cpriv->sign_initialized)
 		CRYPTO_THREAD_unlock(cpriv->rwlock);
