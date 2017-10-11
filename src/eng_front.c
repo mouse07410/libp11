@@ -214,21 +214,15 @@ static void EVP_PKEY_set1_engine(EVP_PKEY *pkey, ENGINE *engine)
 static EVP_PKEY *load_privkey(ENGINE *engine, const char *s_key_id,
 		UI_METHOD *ui_method, void *callback_data)
 {
-	ENGINE_CTX *ctx  = NULL;
-	EVP_PKEY   *pkey = NULL;
+	ENGINE_CTX *ctx;
+	EVP_PKEY *pkey;
 
 	ctx = get_ctx(engine);
 	if (ctx == NULL)
 		return 0;
 	pkey = ctx_load_privkey(ctx, s_key_id, ui_method, callback_data);
 	if (pkey)
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-		pkey->engine = engine;
-#else
-#if defined(EVP_F_EVP_PKEY_SET1_ENGINE)
-		EVP_PKEY_set1_engine(pkey,engine);
-#endif /* EVP_F_EVP_PKEY_SET1_ENGINE */
-#endif /* OPENSSL_VERSION_NUMBER */
+		EVP_PKEY_set1_engine(pkey, engine);
 	return pkey;
 }
 
