@@ -225,8 +225,10 @@ static EVP_PKEY *load_privkey(ENGINE *engine, const char *s_key_id,
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 		pkey->engine = engine;
 #else
+#if defined(EVP_F_EVP_PKEY_SET1_ENGINE)
 		EVP_PKEY_set1_engine(pkey,engine);
-#endif
+#endif /* EVP_F_EVP_PKEY_SET1_ENGINE */
+#endif /* OPENSSL_VERSION_NUMBER */
 	return pkey;
 }
 
