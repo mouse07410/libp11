@@ -152,22 +152,6 @@ static void EVP_PKEY_meth_get_sign(EVP_PKEY_METHOD *pmeth,
 		*psign = pmeth->sign;
 }
 
-#if 0 /* hope we won't need this */
-static void EVP_PKEY_meth_get_encrypt(EVP_PKEY_METHOD *pmeth,
-		int (**pencrypt_init) (EVP_PKEY_CTX *ctx),
-		int (**pencryptfn) (EVP_PKEY_CTX *ctx,
-			unsigned char *out,
-			size_t *outlen,
-			const unsigned char *in,
-			size_t inlen))
-{
-	if (pencrypt_init)
-		*pencrypt_init = pmeth->encrypt_init;
-	if (pencrypt)
-		*pencrypt = pmeth->encrypt;
-}
-#endif
-
 static void EVP_PKEY_meth_get_decrypt(EVP_PKEY_METHOD *pmeth,
 		int (**pdecrypt_init) (EVP_PKEY_CTX *ctx),
 		int (**pdecrypt) (EVP_PKEY_CTX *ctx,
@@ -178,7 +162,7 @@ static void EVP_PKEY_meth_get_decrypt(EVP_PKEY_METHOD *pmeth,
 {
 	if (pdecrypt_init)
 		*pdecrypt_init = pmeth->decrypt_init;
-	if (pencrypt)
+	if (pdecrypt)
 		*pdecrypt = pmeth->decrypt;
 }
 #endif
@@ -395,8 +379,8 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 
 #if defined(DEBUG)
 	fprintf(stderr, "%s:%d pkcs11_try_pkey_rsa_decrypt() out=%p "
-		" *outlen=%lu in=%p inlen=%lu\n",
-		__FILE__, __LINE__, out, *outlen, in, inlen);
+			" *outlen=%lu in=%p inlen=%lu\n",
+			__FILE__, __LINE__, out, *outlen, in, inlen);
 #endif
 
 	pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx);
@@ -428,9 +412,8 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 
 		EVP_PKEY_CTX_get_rsa_padding(evp_pkey_ctx, &padding);
 #if defined(DEBUG)
-		fprintf(stderr, "%s:%d padding=%d\n", __FILE__, __LINE__, pad);
+		fprintf(stderr, "%s:%d padding=%d\n", __FILE__, __LINE__, padding);
 #endif
-
 		switch (padding) {
 		case RSA_PKCS1_OAEP_PADDING:
 #if defined(DEBUG)
@@ -438,7 +421,6 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 #endif
 			if (pkcs11_params_oaep(&oaep_params, evp_pkey_ctx) < 0)
 				return -1;
-
 			memset(&mechanism, 0, sizeof mechanism);
 			mechanism.mechanism = CKM_RSA_PKCS_OAEP;
 			mechanism.pParameter = &oaep_params;
@@ -450,10 +432,10 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 			break;
 		default:
 #if defined(DEBUG)
-			fprintf(stderr, "%s:%d unknown/unsupported padding: %d\n", 
+			fprintf(stderr, "%s:%d unknown/unsupported padding: %d\n",
 				__FILE__, __LINE__, padding);
 #endif
-				return -1;
+			return -1;
 		} /* end switch(padding) */
 
 		CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
@@ -472,7 +454,8 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 		CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
 #if defined(DEBUG)
 	if (rv != CKR_OK)
-		fprintf(stderr, "%s:%d C_DecryptInit or C_Decrypt rv=%d\n", __FILE__, __LINE__, rv);
+		fprintf(stderr, "%s:%d C_DecryptInit or C_Decrypt rv=%d\n", 
+			__FILE__, __LINE__, rv);
 #endif
 
 	if (rv != CKR_OK)
