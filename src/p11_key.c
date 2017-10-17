@@ -223,7 +223,7 @@ static int pkcs11_store_key(PKCS11_TOKEN *token, EVP_PKEY *pk,
 	CK_ATTRIBUTE attrs[32];
 	unsigned int n = 0;
 	int rv;
-	const BIGNUM *rsa_n, *rsa_e, *rsa_d, *rsa_p, *rsa_q;
+	const BIGNUM *rsa_n, *rsa_e, *rsa_d, *rsa_p, *rsa_q, *rsa_dmp1, *rsa_dmq1, *rsa_iqmp;
 
 	/* First, make sure we have a session */
 	if (!spriv->haveSession && PKCS11_open_session(slot, 1))
@@ -258,12 +258,16 @@ static int pkcs11_store_key(PKCS11_TOKEN *token, EVP_PKEY *pk,
 #if OPENSSL_VERSION_NUMBER >= 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
 		RSA_get0_key(rsa, &rsa_n, &rsa_e, &rsa_d);
 		RSA_get0_factors(rsa, &rsa_p, &rsa_q);
+		RSA_get0_crt_params(rsa, &rsa_dmp1, &rsa_dmq1, &rsa_iqmp);
 #else
 		rsa_n=rsa->n;
 		rsa_e=rsa->e;
 		rsa_d=rsa->d;
 		rsa_p=rsa->p;
 		rsa_q=rsa->q;
+		rsa_dmp1=rsa->dmp1;
+		rsa_dmq1=rsa->dmq1;
+		rsa_iqmp=rsa->iqmp;
 #endif
 		pkcs11_addattr_bn(attrs + n++, CKA_MODULUS, rsa_n);
 		pkcs11_addattr_bn(attrs + n++, CKA_PUBLIC_EXPONENT, rsa_e);
@@ -271,6 +275,15 @@ static int pkcs11_store_key(PKCS11_TOKEN *token, EVP_PKEY *pk,
 			pkcs11_addattr_bn(attrs + n++, CKA_PRIVATE_EXPONENT, rsa_d);
 			pkcs11_addattr_bn(attrs + n++, CKA_PRIME_1, rsa_p);
 			pkcs11_addattr_bn(attrs + n++, CKA_PRIME_2, rsa_q);
+			if (rsa_dmp1){
+				pkcs11_addattr_bn(attrs + n++, CKA_EXPONENT_1, rsa_dmp1);
+			}
+			if (rsa_dmq1){
+				pkcs11_addattr_bn(attrs + n++, CKA_EXPONENT_2, rsa_dmq1);
+			}
+			if (rsa_iqmp){
+				pkcs11_addattr_bn(attrs + n++, CKA_COEFFICIENT, rsa_iqmp);
+			}
 		}
 	} else {
 		pkcs11_zap_attrs(attrs, n);
@@ -428,6 +441,55 @@ int pkcs11_enumerate_keys(PKCS11_TOKEN *token, unsigned int type,
 		*keyp = keys->keys;
 	if (countp)
 		*countp = keys->num;
+	return 0;
+}
+
+/**
+ * Remove a key from the associated token
+ */ 
+int pkcs11_remove_key(PKCS11_KEY *key){
+	PKCS11_SLOT *slot = KEY2SLOT(key);
+	PKCS11_CTX *ctx = KEY2CTX(key);
+	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
+	CK_OBJECT_HANDLE obj;
+	CK_ULONG count;
+	CK_ATTRIBUTE search_parameters[32];
+	unsigned int n = 0;
+
+	/* First, make sure we have a session */
+	if (!spriv->haveSession && PKCS11_open_session(slot, 1)){
+		return -1;
+	}
+	if (key->isPrivate){
+		pkcs11_addattr_int(search_parameters + n++, CKA_CLASS, CKO_PRIVATE_KEY);
+	}else{
+		pkcs11_addattr_int(search_parameters + n++, CKA_CLASS, CKO_PUBLIC_KEY);
+	}
+	if (key->id && key->id_len){
+		pkcs11_addattr(search_parameters + n++, CKA_ID, key->id, key->id_len);
+	}
+	if (key->label){
+	 	pkcs11_addattr_s(search_parameters + n++, CKA_LABEL, key->label);
+	}
+
+	int rv = CRYPTOKI_call(ctx,
+		C_FindObjectsInit(spriv->session, search_parameters, n));
+	CRYPTOKI_checkerr(CKR_F_PKCS11_REMOVE_KEY, rv);
+	
+	rv = CRYPTOKI_call(ctx, C_FindObjects(spriv->session, &obj, 1, &count));
+	CRYPTOKI_checkerr(CKR_F_PKCS11_REMOVE_KEY, rv);
+
+	CRYPTOKI_call(ctx, C_FindObjectsFinal(spriv->session));
+	if (count!=1){
+		pkcs11_zap_attrs(search_parameters, n);
+		return -1;
+	}
+	rv = CRYPTOKI_call(ctx, C_DestroyObject(spriv->session, obj));
+	if (rv != CKR_OK){
+		pkcs11_zap_attrs(search_parameters, n);
+		return -1;
+	}
+	pkcs11_zap_attrs(search_parameters, n);
 	return 0;
 }
 
