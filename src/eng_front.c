@@ -206,7 +206,7 @@ struct evp_pkey_st {
 
 static void EVP_PKEY_set1_engine(EVP_PKEY *pkey, ENGINE *engine)
 {
-	pkey->engine = engine;
+	//pkey->engine = engine;
 	ENGINE_up_ref(engine);
 }
 
