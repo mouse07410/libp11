@@ -259,7 +259,7 @@ extern int PKCS11_get_key_type(PKCS11_KEY *);
  * Returns a EVP_PKEY object for the private key
  *
  * @param   key  PKCS11_KEY object
- * @retval !=NULL reference to EVP_PKEY object.
+ * @retval !=NULL reference to the EVP_PKEY object
  * @retval NULL error
  */
 extern EVP_PKEY *PKCS11_get_private_key(PKCS11_KEY *key);
@@ -268,7 +268,7 @@ extern EVP_PKEY *PKCS11_get_private_key(PKCS11_KEY *key);
  * Returns a EVP_PKEY object with the public key
  *
  * @param  key  PKCS11_KEY object
- * @retval !=NULL reference to EVP_PKEY object.
+ * @retval !=NULL reference to the EVP_PKEY object
  * @retval NULL error
  */
 extern EVP_PKEY *PKCS11_get_public_key(PKCS11_KEY *key);
@@ -332,8 +332,8 @@ extern int PKCS11_change_pin(PKCS11_SLOT * slot, const char *old_pin,
  * @param token token returned by PKCS11_find_token()
  * @param pk private key
  * @param label label for this key
- * @param id bytes to use as id value
- * @param id_len length of id value.
+ * @param id bytes to use as the id value
+ * @param id_len length of the id value
  * @retval 0 success
  * @retval -1 error
  */
@@ -345,8 +345,8 @@ extern int PKCS11_store_private_key(PKCS11_TOKEN * token, EVP_PKEY * pk, char *l
  * @param token token returned by PKCS11_find_token()
  * @param pk private key
  * @param label label for this key
- * @param id bytes to use as id value
- * @param id_len length of id value.
+ * @param id bytes to use as the id value
+ * @param id_len length of the id value
  * @retval 0 success
  * @retval -1 error
  */
@@ -358,8 +358,8 @@ extern int PKCS11_store_public_key(PKCS11_TOKEN * token, EVP_PKEY * pk, char *la
  * @param token token returned by PKCS11_find_token()
  * @param x509 x509 certificate object
  * @param label label for this certificate
- * @param id bytes to use as id value
- * @param id_len length of id value.
+ * @param id bytes to use as the id value
+ * @param id_len length of the id value
  * @param ret_cert put new PKCS11_CERT object here
  * @retval 0 success
  * @retval -1 error
@@ -424,15 +424,15 @@ extern void ERR_load_PKCS11_strings(void);
  * duplicate the functionality OpenSSL provides for EVP_PKEY objects
  */
 
-/** 
- * Generate and store a private key on the token
+/**
+ * Generate a private key on the token
  *
  * @param token token returned by PKCS11_find_token()
- * @param algorithm EVP_PKEY_RSA
+ * @param algorithm IGNORED (still here for backward compatibility)
  * @param bits size of the modulus in bits
  * @param label label for this key
- * @param id bytes to use as id value
- * @param id_len length of id value.
+ * @param id bytes to use as the id value
+ * @param id_len length of the id value
  * @retval 0 success
  * @retval -1 error
  */
@@ -481,7 +481,7 @@ P11_DEPRECATED_FUNC extern int PKCS11_private_encrypt(
  */
 P11_DEPRECATED_FUNC extern int PKCS11_private_decrypt(
 	int flen, const unsigned char *from,
-	unsigned char *to, PKCS11_KEY * key, int padding); 
+	unsigned char *to, PKCS11_KEY * key, int padding);
 
 /* Function codes */
 # define CKR_F_PKCS11_CHANGE_PIN                          100
@@ -514,6 +514,7 @@ P11_DEPRECATED_FUNC extern int PKCS11_private_decrypt(
 # define CKR_F_PKCS11_STORE_KEY                           127
 # define CKR_F_PKCS11_REMOVE_KEY                          128
 # define CKR_F_PKCS11_REMOVE_CERTIFICATE                  129
+# define CKR_F_PKCS11_GENERATE_KEY                        130
 
 /* For backward compatibility */
 #define PKCS11_LOAD_MODULE_ERROR                          P11_LOAD_MODULE_ERROR
