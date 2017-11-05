@@ -202,6 +202,8 @@ static EVP_PKEY *load_privkey(ENGINE *engine, const char *s_key_id,
 		return 0;
 	pkey = ctx_load_privkey(ctx, s_key_id, ui_method, callback_data);
 #ifdef EVP_F_EVP_PKEY_SET1_ENGINE
+	/* EVP_PKEY_set1_engine() is required for OpenSSL 1.1.x,
+	 * but otherwise setting pkey->engine breaks OpenSSL 1.0.2 */
 	if (pkey)
 		EVP_PKEY_set1_engine(pkey, engine);
 #endif /* EVP_F_EVP_PKEY_SET1_ENGINE */
