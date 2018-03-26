@@ -65,7 +65,9 @@ examples/listkeys
 test-driver
 tests/openssl_version
 tests/fork-test
+tests/list-tokens
 tests/evp-sign
+tests/fork-change-slot
 tests/*.log
 tests/*.trs
 tests/output.*
