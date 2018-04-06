@@ -241,7 +241,9 @@ static int bind_helper(ENGINE *e)
 			!ENGINE_set_ctrl_function(e, engine_ctrl) ||
 			!ENGINE_set_cmd_defns(e, engine_cmd_defns) ||
 			!ENGINE_set_name(e, PKCS11_ENGINE_NAME) ||
+#if OPENSSL_VERSION_NUMBER  < 0x10100002L
 			!ENGINE_set_RAND(e, PKCS11_get_rand_method()) ||
+#endif /* OPENSSL_VERSION_NUMBER */
 #ifndef OPENSSL_NO_RSA
 			!ENGINE_set_RSA(e, PKCS11_get_rsa_method()) ||
 #endif
