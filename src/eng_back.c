@@ -1030,6 +1030,8 @@ int rand_bytes (unsigned char *buf, int num)
 			if (rc == 0)
 				break;
 			/* failed keep trying */
+			ctx_log(_g_pkcs11_ctx, 0, 
+				"token initialized and has RNG, but rand_bytes() failed\n");
 		}
 	}
 

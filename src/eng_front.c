@@ -265,7 +265,9 @@ static int bind_helper(ENGINE *e)
 			!ENGINE_set_load_privkey_function(e, load_privkey)) {
 		return 0;
 	} else {
+#if OPENSSL_VERSION_NUMBER  < 0x10100002L
 		ENGINE_set_table_flags(ENGINE_TABLE_FLAG_NOINIT);
+#endif /* OPENSSL_VERSION_NUMBER */
 		ERR_load_ENG_strings();
 		return 1;
 	}
