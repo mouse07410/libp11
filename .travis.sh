@@ -28,7 +28,7 @@ install_from_github() {
     git clone https://github.com/$1/$2.git -b $3
     cd $2
     autoreconf -fvi
-    ./configure
+    ./configure $4
     make
     sudo -E make install
     cd ..
