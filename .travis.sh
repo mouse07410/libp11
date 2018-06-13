@@ -23,12 +23,16 @@ set -e
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+fetch_from_github() {
+    git clone https://github.com/$1/$2.git -b $3 --depth=1
+}
+
 install_from_github() {
     echo "Installing $2"
-    git clone https://github.com/$1/$2.git -b $3
+    fetch_from_github $1 $2 $3
     cd $2
     autoreconf -fvi
-    ./configure $4
+    ./configure $4 $5
     make
     sudo -E make install
     cd ..
@@ -36,15 +40,39 @@ install_from_github() {
     sudo ldconfig
 }
 
+install_openssl() {
+    echo "Installing $1"
+    fetch_from_github openssl openssl $1
+    cd openssl
+    OPENSSL_DIR=/usr/local
+    ./config shared -fPIC --openssldir=${OPENSSL_DIR} --prefix=${OPENSSL_DIR}
+    make depend && make
+    sudo make install_sw
+    cd ..
+    echo "$1 installed"
+    sudo ldconfig
+    SOFTHSM_OPENSSL_DIR="--with-openssl=${OPENSSL_DIR}"
+}
+
 sudo apt-get update -qq
+
 # libpcsclite-dev is required for OpenSC
 sudo apt-get install -y libpcsclite-dev
 
 export CC=`which $CC`
 mkdir prerequisites
 cd prerequisites
+
+if [ -n "${OPENSSL}" ]; then
+    # Remove pre-installed OpenSSL
+    sudo apt-get remove openssl libssl-dev
+
+    install_openssl ${OPENSSL}
+fi
+
 install_from_github OpenSC OpenSC master
 # softhsm is required for "make check"
-install_from_github opendnssec SoftHSMv2 master --disable-gost --disable-eddsa
+install_from_github opendnssec SoftHSMv2 master --disable-gost --disable-eddsa \
+    ${SOFTHSM_OPENSSL_DIR}
 cd ..
 rm -rf prerequisites
