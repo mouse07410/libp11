@@ -4,7 +4,6 @@
  * Copied/modified by Kevin Stefanik (kstef@mtppi.org) for the OpenSC
  * project 2003.
  * Copyright (c) 2017 Michał Trojnara
- * Copyright (c) 2018 William Roberts
  */
 /* ====================================================================
  * Copyright (c) 1999-2001 The OpenSSL Project.  All rights reserved.
@@ -219,15 +218,6 @@ static int engine_ctrl(ENGINE *engine, int cmd, long i, void *p, void (*f) ())
 	if (ctx == NULL)
 		return 0;
 	return ctx_engine_ctrl(ctx, cmd, i, p, f);
-}
-
-static RAND_METHOD *PKCS11_get_rand_method(void) {
-
-	static RAND_METHOD ops = {
-		.bytes = rand_bytes,
-	};
-
-	return &ops;
 }
 
 /* This internal function is used by ENGINE_pkcs11() and possibly by the

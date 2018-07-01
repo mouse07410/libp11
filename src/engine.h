@@ -39,6 +39,7 @@
 #include <openssl/crypto.h>
 #include <openssl/objects.h>
 #include <openssl/engine.h>
+#include <openssl/ui.h>
 
 #define CMD_SO_PATH		ENGINE_CMD_BASE
 #define CMD_MODULE_PATH 	(ENGINE_CMD_BASE+1)
@@ -87,8 +88,6 @@ int parse_pkcs11_uri(ENGINE_CTX *ctx,
 int parse_slot_id_string(ENGINE_CTX *ctx,
 	const char *slot_id, int *slot,
 	unsigned char *id, size_t * id_len, char **label);
-
-int rand_bytes(unsigned char *buf, int num);
 
 #endif
 
