@@ -27,6 +27,7 @@
  */
 
 #include "engine.h"
+#include "libp11.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -261,6 +262,8 @@ int ctx_destroy(ENGINE_CTX *ctx)
 	return 1;
 }
 
+static PKCS11_CTX *_g_pkcs11_ctx;
+
 /* Initialize libp11 data: ctx->pkcs11_ctx and ctx->slot_list */
 static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 {
@@ -292,6 +295,12 @@ static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 	ctx_log(ctx, 1, "Found %u slot%s\n", slot_count,
 		slot_count <= 1 ? "" : "s");
 
+	/*
+ 	 * Capture the pkcs11 context as the random callback from openssl
+ 	 * doesn't pass any contextual information and pkcs11 will require
+ 	 * the context.
+ 	 */
+ 	_g_pkcs11_ctx = pkcs11_ctx;
 	ctx->pkcs11_ctx = pkcs11_ctx;
 	ctx->slot_list = slot_list;
 	ctx->slot_count = slot_count;
