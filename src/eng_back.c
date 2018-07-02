@@ -4,7 +4,6 @@
  * Copyright (c) 2002 Olaf Kirch
  * Copyright (c) 2003 Kevin Stefanik
  * Copyright (c) 2017 Michał Trojnara
- * Copyright (c) 2018 William Roberts
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -297,11 +296,12 @@ static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 		slot_count <= 1 ? "" : "s");
 
 	/*
-	 * Capture the pkcs11 context as the random callback from openssl
-	 * doesn't pass any contextual information and pkcs11 will require
-	 * the context.
-	 */
-	_g_pkcs11_ctx = ctx->pkcs11_ctx = pkcs11_ctx;
+ 	 * Capture the pkcs11 context as the random callback from openssl
+ 	 * doesn't pass any contextual information and pkcs11 will require
+ 	 * the context.
+ 	 */
+ 	_g_pkcs11_ctx = pkcs11_ctx;
+	ctx->pkcs11_ctx = pkcs11_ctx;
 	ctx->slot_list = slot_list;
 	ctx->slot_count = slot_count;
 }
