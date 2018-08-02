@@ -13,7 +13,7 @@ env:
     - SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
   matrix:
     - OPENSSL="OpenSSL_1_0_2-stable"
-    - OPENSSL="OpenSSL_1_1_0-stable"
+    - OPENSSL="OpenSSL_1_1_0i"
 
 compiler:
   - gcc
@@ -21,12 +21,18 @@ compiler:
 
 os:
   - linux
+  - osx
+
+# OS X only supports one image. Use the latest.
+osx_image: xcode9.4
 
 matrix:
   include:
     - os: linux
       compiler: gcc
       env: DO_COVERITY_SCAN=yes
+    - os: osx
+      compiler: clang
 
 install:
   - ./.travis.sh
