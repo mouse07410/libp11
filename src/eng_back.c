@@ -270,8 +270,8 @@ static PKCS11_CTX *_g_pkcs11_ctx;
 /* Initialize libp11 data: ctx->pkcs11_ctx and ctx->slot_list */
 static void ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 {
-	PKCS11_CTX *pkcs11_ctx;
-	PKCS11_SLOT *slot_list = NULL;
+	PKCS11_CTX  *pkcs11_ctx = NULL;
+	PKCS11_SLOT *slot_list  = NULL;
 	unsigned int slot_count = 0;
 
 	ctx_log(ctx, 1, "PKCS#11: Initializing the engine\n");
