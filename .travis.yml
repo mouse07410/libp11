@@ -21,18 +21,18 @@ compiler:
 
 os:
   - linux
-  - osx
+  #- osx
 
 # OS X only supports one image. Use the latest.
-osx_image: xcode9.4
+#osx_image: xcode9.4
 
 matrix:
   include:
     - os: linux
       compiler: gcc
       env: DO_COVERITY_SCAN=yes
-    - os: osx
-      compiler: clang
+    #- os: osx
+    #  compiler: clang
 
 install:
   - ./.travis.sh
