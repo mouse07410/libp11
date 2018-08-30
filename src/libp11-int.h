@@ -340,6 +340,13 @@ extern int pkcs11_store_certificate(PKCS11_TOKEN * token, X509 * x509,
 extern int pkcs11_seed_random(PKCS11_SLOT *, const unsigned char *s, unsigned int s_len);
 extern int pkcs11_generate_random(PKCS11_SLOT *, unsigned char *r, unsigned int r_len);
 
+/* Reinitialize the module afer fork if needed */
+extern int check_fork(PKCS11_CTX *ctx);
+extern int check_slot_fork(PKCS11_SLOT *slot);
+extern int check_token_fork(PKCS11_TOKEN *token);
+extern int check_key_fork(PKCS11_KEY *key);
+extern int check_cert_fork(PKCS11_CERT *cert);
+
 /* Internal implementation of deprecated features */
 
 /* Generate and store a private key on the token */
@@ -377,7 +384,7 @@ extern int pkcs11_private_decrypt(
 	unsigned char *to, PKCS11_KEY * key, int padding);
 
 /* Retrieve PKCS11_KEY from an RSA key */
-extern PKCS11_KEY *pkcs11_get_ex_data_rsa(RSA *rsa);
+extern PKCS11_KEY *pkcs11_get_ex_data_rsa(const RSA *rsa);
 
 #endif
 
