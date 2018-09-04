@@ -1,5 +1,6 @@
 /* libp11, a simple layer on to of PKCS#11 API
  * Copyright (C) 2005 Olaf Kirch <okir@lst.de>
+ * Copyright (C) 2015-2018 Michał Trojnara <Michal.Trojnara@stunnel.org>
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -21,6 +22,7 @@
 #include <openssl/buffer.h>
 
 static int pkcs11_init_slot(PKCS11_CTX *, PKCS11_SLOT *, CK_SLOT_ID);
+static void pkcs11_release_slot(PKCS11_CTX *, PKCS11_SLOT *);
 static int pkcs11_check_token(PKCS11_CTX *, PKCS11_SLOT *);
 static void pkcs11_destroy_token(PKCS11_TOKEN *);
 
@@ -37,7 +39,8 @@ unsigned long pkcs11_get_slotid_from_slot(PKCS11_SLOT *slot)
 /*
  * Enumerate slots
  */
-int pkcs11_enumerate_slots(PKCS11_CTX *ctx, PKCS11_SLOT **slotp, unsigned int *countp)
+int pkcs11_enumerate_slots(PKCS11_CTX *ctx, PKCS11_SLOT **slotp,
+		unsigned int *countp)
 {
 	PKCS11_CTX_private *cpriv = PRIVCTX(ctx);
 	CK_SLOT_ID *slotid;
@@ -89,7 +92,8 @@ int pkcs11_enumerate_slots(PKCS11_CTX *ctx, PKCS11_SLOT **slotp, unsigned int *c
 /*
  * Find a slot with a token that looks "valuable"
  */
-PKCS11_SLOT *pkcs11_find_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots, unsigned int nslots)
+PKCS11_SLOT *pkcs11_find_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots,
+		unsigned int nslots)
 {
 	PKCS11_SLOT *slot, *best;
 	PKCS11_TOKEN *tok;
@@ -116,21 +120,23 @@ PKCS11_SLOT *pkcs11_find_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots, unsigned int
 /*
  * Find the next slot with a token that looks "valuable"
  */
-PKCS11_SLOT *pkcs11_find_next_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots, unsigned int nslots, PKCS11_SLOT *current)
+PKCS11_SLOT *pkcs11_find_next_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots,
+		unsigned int nslots, PKCS11_SLOT *current)
 {
+	int offset;
+
 	if (slots == NULL)
 		return NULL;
 
 	if (current) {
-		if (slots > current || (current - slots) > nslots)
+		offset = current + 1 - slots;
+		if (offset < 1 || (unsigned int)offset >= nslots)
 			return NULL;
-
-		current++;
-		nslots -= (current - slots);
-		slots = current;
+	} else {
+		offset = 0;
 	}
 
-	return pkcs11_find_token(ctx, slots, nslots);
+	return pkcs11_find_token(ctx, slots + offset, nslots - offset);
 }
 
 /*
@@ -201,7 +207,8 @@ int pkcs11_is_logged_in(PKCS11_SLOT *slot, int so, int *res)
 	if (so) {
 		*res = session_info.state == CKS_RW_SO_FUNCTIONS;
 	} else {
-		*res = session_info.state == CKS_RO_USER_FUNCTIONS || session_info.state == CKS_RW_USER_FUNCTIONS;
+		*res = session_info.state == CKS_RO_USER_FUNCTIONS ||
+			session_info.state == CKS_RW_USER_FUNCTIONS;
 	}
 	return 0;
 }
@@ -438,7 +445,8 @@ static int pkcs11_init_slot(PKCS11_CTX *ctx, PKCS11_SLOT *slot, CK_SLOT_ID id)
 	return 0;
 }
 
-void pkcs11_release_all_slots(PKCS11_CTX *ctx,  PKCS11_SLOT *slots, unsigned int nslots)
+void pkcs11_release_all_slots(PKCS11_CTX *ctx,  PKCS11_SLOT *slots,
+		unsigned int nslots)
 {
 	unsigned int i;
 
@@ -447,7 +455,7 @@ void pkcs11_release_all_slots(PKCS11_CTX *ctx,  PKCS11_SLOT *slots, unsigned int
 	OPENSSL_free(slots);
 }
 
-void pkcs11_release_slot(PKCS11_CTX *ctx, PKCS11_SLOT *slot)
+static void pkcs11_release_slot(PKCS11_CTX *ctx, PKCS11_SLOT *slot)
 {
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 

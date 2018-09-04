@@ -1,5 +1,6 @@
 /* libp11, a simple layer on to of PKCS#11 API
  * Copyright (C) 2005 Olaf Kirch <okir@lst.de>
+ * Copyright (C) 2016-2018 Michał Trojnara <Michal.Trojnara@stunnel.org>
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -73,6 +74,7 @@ int pkcs11_remove_certificate(PKCS11_CERT *cert){
 	CK_ULONG count;
 	CK_ATTRIBUTE search_parameters[32];
 	unsigned int n = 0;
+	int rv;
 
 	/* First, make sure we have a session */
 	if (!spriv->haveSession && PKCS11_open_session(slot, 1)){
@@ -87,7 +89,7 @@ int pkcs11_remove_certificate(PKCS11_CERT *cert){
 	 	pkcs11_addattr_s(search_parameters + n++, CKA_LABEL, cert->label);
 	}
 
-	int rv = CRYPTOKI_call(ctx,
+	rv = CRYPTOKI_call(ctx,
 		C_FindObjectsInit(spriv->session, search_parameters, n));
 	CRYPTOKI_checkerr(CKR_F_PKCS11_REMOVE_CERTIFICATE, rv);
 	
