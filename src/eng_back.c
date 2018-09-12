@@ -555,12 +555,12 @@ static X509 *ctx_load_cert(ENGINE_CTX *ctx, const char *s_slot_cert_id,
 	} else { 
 		for (n = 0; n < cert_count; n++) {
 			PKCS11_CERT *k = certs + n;
-			if(k->id && *(k->id)) {
+			if (k->id && *(k->id)) {
 				selected_cert = k; /* Use the first certificate with nonempty id */
 				break;
 			}
 		}
-		if(!selected_cert)
+		if (!selected_cert)
 			selected_cert = certs; /* Use the first certificate */
 	}
 
@@ -762,10 +762,6 @@ static EVP_PKEY *ctx_load_key(ENGINE_CTX *ctx, const char *s_slot_key_id,
 	 * with some other (which ones?) PKCS#11 libraries */
 	if (!tok->initialized)
 		ctx_log(ctx, 0, "Found uninitialized token\n");
-	if (isPrivate && !tok->userPinSet && !tok->readOnly) {
-		ctx_log(ctx, 0, "Found slot without user PIN\n");
-		goto error;
-	}
 
 	ctx_log(ctx, 1, "Found slot:  %s\n", slot->description);
 	ctx_log(ctx, 1, "Found token: %s\n", slot->token->label);
