@@ -13,7 +13,7 @@ env:
     - SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
   matrix:
     - OPENSSL="OpenSSL_1_0_2-stable"
-    - OPENSSL="OpenSSL_1_1_0-stable"
+    - OPENSSL="OpenSSL_1_1_1-stable"
 
 compiler:
   - gcc
