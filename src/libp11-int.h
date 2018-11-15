@@ -154,6 +154,7 @@ void CRYPTO_THREAD_lock_free(int);
 /* Emulate the OpenSSL 1.1 getters */
 #if OPENSSL_VERSION_NUMBER < 0x10100003L || defined(LIBRESSL_VERSION_NUMBER)
 #define EVP_PKEY_get0_RSA(key) ((key)->pkey.rsa)
+#define EVP_PKEY_get0_EC_KEY(key) ((key)->pkey.ec)
 #endif
 
 /* Reinitializing the module afer fork (if detected) */
@@ -391,6 +392,9 @@ extern int pkcs11_private_decrypt(
 
 /* Retrieve PKCS11_KEY from an RSA key */
 extern PKCS11_KEY *pkcs11_get_ex_data_rsa(const RSA *rsa);
+
+/* Retrieve PKCS11_KEY from an EC_KEY */
+extern PKCS11_KEY *pkcs11_get_ex_data_ec(const EC_KEY *ec);
 
 #endif
 

@@ -251,6 +251,10 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	if (no_point && key->isPrivate) /* Retry with the public key */
 		no_point = pkcs11_get_point(ec, pkcs11_find_key_from_key(key));
 
+	if (key->isPrivate && EC_KEY_get0_private_key(ec) == NULL) {
+		EC_KEY_set_private_key(ec, BN_new());
+	}
+
 	/* A public keys requires both the params and the point to be present */
 	if (!key->isPrivate && (no_params || no_point)) {
 		EC_KEY_free(ec);
@@ -260,7 +264,7 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	return ec;
 }
 
-static PKCS11_KEY *pkcs11_get_ex_data_ec(const EC_KEY *ec)
+PKCS11_KEY *pkcs11_get_ex_data_ec(const EC_KEY *ec)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
 	return EC_KEY_get_ex_data(ec, ec_ex_index);
