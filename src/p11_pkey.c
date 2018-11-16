@@ -587,7 +587,7 @@ static int pkcs11_try_pkey_ec_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 		CRYPTO_THREAD_write_lock(cpriv->rwlock);
 		rv = CRYPTOKI_call(ctx,
 			C_SignInit(spriv->session, &mechanism, kpriv->object));
-		if (!rv && kpriv->always_authenticate == CK_TRUE)
+		if (rv == CKR_USER_NOT_LOGGED_IN)
 			rv = pkcs11_authenticate(key);
 	}
 	if (!rv)
