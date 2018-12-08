@@ -34,6 +34,8 @@
 #include <openssl/rand.h>
 #include <openssl/err.h>
 
+#include "libp11.h"
+
 #define RANDOM_SIZE 20
 #define MAX_SIGSIZE 1024
 

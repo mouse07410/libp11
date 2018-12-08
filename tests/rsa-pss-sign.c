@@ -36,6 +36,8 @@
 #include <openssl/engine.h>
 #include <openssl/conf.h>
 
+#include "libp11.h"
+
 static void display_openssl_errors(int l)
 {
 	const char *file;

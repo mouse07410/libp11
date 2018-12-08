@@ -155,7 +155,9 @@ static int engine_finish(ENGINE *engine)
 	 * engine_finish() is also executed from ENGINE_finish() without
 	 * acquired CRYPTO_LOCK_ENGINE, and there is no way with to check
 	 * whether a lock is already acquired with OpenSSL < 1.1.0 API. */
-#if OPENSSL_VERSION_NUMBER >= 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
+#if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
+	rv &= ctx_finish(ctx);
+#elif OPENSSL_VERSION_NUMBER >= 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
 	rv &= ctx_finish(ctx);
 #endif
 

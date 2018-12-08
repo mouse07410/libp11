@@ -40,6 +40,8 @@
 #include <openssl/conf.h>
 #include <openssl/ui.h>
 
+#include "libp11.h"
+
 /* UI method that's only used to fail if get_pin inside engine_pkcs11
  * has failed to pick up in a PIN sent in with ENGINE_ctrl_cmd_string */
 static UI_METHOD *ui_detect_failed_ctrl = NULL;
