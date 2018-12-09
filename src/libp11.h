@@ -389,12 +389,6 @@ extern int PKCS11_generate_random(PKCS11_SLOT *slot, unsigned char *r, unsigned 
  * PKCS#11 implementation for OpenSSL methods
  */
 
-#if (defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3)
-/* Terrible hack, necessary to build on OpenSSL master */
-#undef OPENSSL_VERSION_NUMBER
-#define OPENSSL_VERSION_NUMBER 0x30100000L
-#endif /* terrible hack for OpenSSL master (post-1.1.1) */
-	
 RSA_METHOD *PKCS11_get_rsa_method(void);
 /* Also define unsupported methods to retain backward compatibility */
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
