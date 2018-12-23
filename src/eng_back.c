@@ -48,7 +48,7 @@ struct st_engine_ctx {
 	 * must be whitened, to prevent security holes.
 	 */
 	char *pin;
-	int pin_length;
+	size_t pin_length;
 	int verbose;
 	char *module;
 	char *init_args;
