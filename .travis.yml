@@ -34,6 +34,10 @@ matrix:
     #- os: osx
     #  compiler: clang
 
+  allow_failures:
+    - os: linux
+      env: OPENSSL="OpenSSL_1_1_1-stable"
+
 install:
   - ./.travis.sh
 
