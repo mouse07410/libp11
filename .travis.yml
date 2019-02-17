@@ -38,6 +38,9 @@ matrix:
     - os: linux
       compiler: clang
       env: OPENSSL="OpenSSL_1_1_1-stable"
+    - os: linux
+      compiler: gcc
+      env: OPENSSL="OpenSSL_1_1_1-stable"
 
 install:
   - ./.travis.sh
