@@ -29,6 +29,7 @@
 
 #ifndef OPENSSL_NO_EC
 #include <openssl/ec.h>
+#include <openssl/bn.h>
 #endif
 #ifndef OPENSSL_NO_ECDSA
 #include <openssl/ecdsa.h>
@@ -197,7 +198,8 @@ static int pkcs11_get_params(EC_KEY *ec, PKCS11_KEY *key)
 		return -1;
 
 	a = params;
-	rv = d2i_ECParameters(&ec, &a, (long)params_len) == NULL;
+	// C99 convention: boolean true=1, false=0
+	rv = (d2i_ECParameters(&ec, &a, (long) params_len) == NULL);
 	OPENSSL_free(params);
 	return rv;
 }
@@ -206,10 +208,10 @@ static int pkcs11_get_params(EC_KEY *ec, PKCS11_KEY *key)
  * return nonzero on error */
 static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
 {
-	CK_BYTE *point;
+	CK_BYTE *point = NULL;
 	size_t point_len = 0;
-	const unsigned char *a;
-	ASN1_OCTET_STRING *os;
+	const unsigned char *a = NULL;
+	ASN1_OCTET_STRING *os = NULL;
 	int rv = -1;
 
 	if (key == NULL ||
@@ -221,12 +223,12 @@ static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
 	os = d2i_ASN1_OCTET_STRING(NULL, &a, (long)point_len);
 	if (os) {
 		a = os->data;
-		rv = o2i_ECPublicKey(&ec, &a, os->length) == NULL;
+		rv = (o2i_ECPublicKey(&ec, &a, os->length) == NULL);
 		ASN1_STRING_free(os);
 	}
 	if (rv) { /* Workaround for broken PKCS#11 modules */
 		a = point;
-		rv = o2i_ECPublicKey(&ec, &a, (long)point_len) == NULL;
+		rv = o2i_ECPublicKey(&ec, &a, (long) point_len) == NULL;
 	}
 	OPENSSL_free(point);
 	return rv;
@@ -234,13 +236,13 @@ static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
 
 static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 {
-	EC_KEY *ec;
-	PKCS11_CERT *cert;
-	EVP_PKEY *pubkey;
-	EC_KEY *pubkey_ec;
-	BIGNUM *bn;
-	const EC_POINT *point;
-	int no_params, no_point;
+	EC_KEY *ec = NULL;
+	PKCS11_CERT *cert = NULL;
+	EVP_PKEY *pubkey = NULL;
+	EC_KEY *pubkey_ec = NULL;
+	BIGNUM *bn = NULL;
+	const EC_POINT *point = NULL;
+	int no_params = 0, no_point = -1;
 
 	ec = EC_KEY_new();
 	if (ec == NULL)
@@ -253,11 +255,11 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	 */
 	no_params = pkcs11_get_params(ec, key);
 	no_point = pkcs11_get_point(ec, key);
-	if (no_point && key->isPrivate) /* Retry with the public key */
+	if ((no_point == -1) && key->isPrivate) /* Retry with the public key */
 		no_point = pkcs11_get_point(ec, pkcs11_find_key_from_key(key));
-
+	
 	/* Retry with the certificate */
-	if (no_point && key->isPrivate) {
+	if ((no_point == -1) && key->isPrivate) {
 		cert = pkcs11_find_certificate(key);
 		if (cert) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
@@ -270,7 +272,10 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 				if (pubkey_ec) {
 					point = EC_KEY_get0_public_key(pubkey_ec);
 					if (point) {
-						no_point = EC_KEY_set_public_key(ec, point);
+						if (EC_KEY_set_public_key(ec, (const EC_POINT *) point) == 0)
+							no_point = -1;
+						else
+							no_point = 0;
 					}
 				}
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
@@ -280,14 +285,17 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 		}
 	}
 
-	if (key->isPrivate && EC_KEY_get0_private_key(ec) == NULL) {
+	if (key->isPrivate && (EC_KEY_get0_private_key(ec)) == NULL) {
 		bn = BN_new();
 		EC_KEY_set_private_key(ec, bn);
 		BN_free(bn);
 	}
 
 	/* A public keys requires both the params and the point to be present */
-	if (!key->isPrivate && (no_params || no_point)) {
+#ifdef DEBUG
+	fprintf(stderr, "%s:%d no_params=%d no_point=%d\n", __FILE__, __LINE__, no_params, no_point);
+#endif /* DEBUG */
+	if (!(key->isPrivate) && (no_params || (no_point == -1))) {
 		EC_KEY_free(ec);
 		return NULL;
 	}

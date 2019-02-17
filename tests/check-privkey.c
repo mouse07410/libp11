@@ -24,6 +24,7 @@
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
+#include <openssl/pem.h>
 #include <openssl/err.h>
 
 static void usage(char *argv[])
@@ -71,15 +72,15 @@ int main(int argc, char *argv[])
 
 	cert_fp = fopen(certfile, "rb");
 	if (!cert_fp) {
-		fprintf(stderr, "Could not open file %s\n", certfile);
+		fprintf(stderr, "%s:%d Could not open file %s\n", __FILE__, __LINE__, certfile);
 		ret = 1;
 		goto end;
 	}
 
 	cert = PEM_read_X509(cert_fp, NULL, NULL, NULL);
 	if (!cert) {
-		fprintf(stderr, "Could not read certificate file"
-				"(must be PEM format)\n");
+		fprintf(stderr, "%s:%d Could not read certificate file"
+		        "(must be PEM format)\n", __FILE__, __LINE__);
 	}
 
 	if (cert_fp) {
@@ -88,7 +89,7 @@ int main(int argc, char *argv[])
 
 	ret = CONF_modules_load_file(efile, "engines", 0);
 	if (ret <= 0) {
-		fprintf(stderr, "cannot load %s\n", efile);
+		fprintf(stderr, "%s:%d cannot load %s\n", __FILE__, __LINE__, efile);
 		display_openssl_errors(__LINE__);
 		exit(1);
 	}
@@ -109,7 +110,7 @@ int main(int argc, char *argv[])
 
 	engine = ENGINE_by_id("pkcs11");
 	if (engine == NULL) {
-		printf("Could not get engine\n");
+		printf("%s:%d Could not get engine\n", __FILE__, __LINE__);
 		display_openssl_errors(__LINE__);
 		ret = 1;
 		goto end;
@@ -135,17 +136,17 @@ int main(int argc, char *argv[])
 	pkey = ENGINE_load_private_key(engine, privkey, 0, 0);
 
 	if (pkey == NULL) {
-		printf("Could not load key\n");
+		printf("%s:%d Could not load key\n", __FILE__, __LINE__);
 		display_openssl_errors(__LINE__);
 		ret = 1;
 		goto end;
 	}
 
-	ENGINE_finish(engine);
+
 
 	ret = X509_check_private_key(cert, pkey);
 	if (!ret) {
-		printf("Could not check private key\n");
+		printf("%s:%d Could not check private key\n", __FILE__, __LINE__);
 		display_openssl_errors(__LINE__);
 		ret = 1;
 		goto end;
@@ -158,6 +159,8 @@ int main(int argc, char *argv[])
 end:
 	X509_free(cert);
 	EVP_PKEY_free(pkey);
+	
+	ENGINE_finish(engine);
 
 	return ret;
 }
