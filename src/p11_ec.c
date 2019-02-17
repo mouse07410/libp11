@@ -228,7 +228,7 @@ static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
 	}
 	if (rv) { /* Workaround for broken PKCS#11 modules */
 		a = point;
-		rv = o2i_ECPublicKey(&ec, &a, (long) point_len) == NULL;
+		rv = (o2i_ECPublicKey(&ec, &a, (long) point_len) == NULL);
 	}
 	OPENSSL_free(point);
 	return rv;
@@ -255,11 +255,11 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	 */
 	no_params = pkcs11_get_params(ec, key);
 	no_point = pkcs11_get_point(ec, key);
-	if ((no_point == -1) && key->isPrivate) /* Retry with the public key */
+	if ((no_point != 0) && key->isPrivate) /* Retry with the public key */
 		no_point = pkcs11_get_point(ec, pkcs11_find_key_from_key(key));
 	
 	/* Retry with the certificate */
-	if ((no_point == -1) && key->isPrivate) {
+	if ((no_point != 0) && key->isPrivate) {
 		cert = pkcs11_find_certificate(key);
 		if (cert) {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
@@ -295,7 +295,7 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 #ifdef DEBUG
 	fprintf(stderr, "%s:%d no_params=%d no_point=%d\n", __FILE__, __LINE__, no_params, no_point);
 #endif /* DEBUG */
-	if (!(key->isPrivate) && (no_params || (no_point == -1))) {
+	if (!(key->isPrivate) && (no_params || (no_point != 0))) {
 		EC_KEY_free(ec);
 		return NULL;
 	}
