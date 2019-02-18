@@ -206,7 +206,7 @@ static int pkcs11_get_params(EC_KEY *ec, PKCS11_KEY *key)
 
 /* Retrieve EC point from key into ec
  * return nonzero on error */
-static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
+static int pkcs11_get_point_key(EC_KEY *ec, PKCS11_KEY *key)
 {
 	CK_BYTE *point = NULL;
 	size_t point_len = 0;
@@ -234,15 +234,46 @@ static int pkcs11_get_point(EC_KEY *ec, PKCS11_KEY *key)
 	return rv;
 }
 
+/* Retrieve EC point from cert into ec
+ * return nonzero on error */
+static int pkcs11_get_point_cert(EC_KEY *ec, PKCS11_CERT *cert)
+{
+	EVP_PKEY *pubkey = NULL;
+	EC_KEY *pubkey_ec = NULL;
+	const EC_POINT *point;
+	int rv = -1;
+
+	if (cert == NULL)
+		goto error;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
+	pubkey = X509_get0_pubkey(cert->x509);
+#else
+	pubkey = X509_get_pubkey(cert->x509);
+#endif
+	if (pubkey == NULL)
+		goto error;
+	pubkey_ec = EVP_PKEY_get0_EC_KEY(pubkey);
+	if (pubkey_ec == NULL)
+		goto error;
+	point = EC_KEY_get0_public_key(pubkey_ec);
+	if (point == NULL)
+		goto error;
+	if (EC_KEY_set_public_key(ec, point) == 0)
+		goto error;
+	rv = 0;
+
+ error:
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+	EVP_PKEY_free(pubkey);
+#endif
+	return rv;
+}
+
 static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 {
 	EC_KEY *ec = NULL;
-	PKCS11_CERT *cert = NULL;
-	EVP_PKEY *pubkey = NULL;
-	EC_KEY *pubkey_ec = NULL;
-	BIGNUM *bn = NULL;
-	const EC_POINT *point = NULL;
-	int no_params = 0, no_point = -1;
+	int no_params = -1, no_point = -1;
 
 	ec = EC_KEY_new();
 	if (ec == NULL)
@@ -254,39 +285,14 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 	 * it if the PKCS#11 module or the hardware can figure this out
 	 */
 	no_params = pkcs11_get_params(ec, key);
-	no_point = pkcs11_get_point(ec, key);
-	if ((no_point != 0) && key->isPrivate) /* Retry with the public key */
-		no_point = pkcs11_get_point(ec, pkcs11_find_key_from_key(key));
-	
-	/* Retry with the certificate */
-	if ((no_point != 0) && key->isPrivate) {
-		cert = pkcs11_find_certificate(key);
-		if (cert) {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
-			pubkey = X509_get0_pubkey(cert->x509);
-#else
-			pubkey = X509_get_pubkey(cert->x509);
-#endif
-			if (pubkey) {
-				pubkey_ec = EVP_PKEY_get0_EC_KEY(pubkey);
-				if (pubkey_ec) {
-					point = EC_KEY_get0_public_key(pubkey_ec);
-					if (point) {
-						if (EC_KEY_set_public_key(ec, (const EC_POINT *) point) == 0)
-							no_point = -1;
-						else
-							no_point = 0;
-					}
-				}
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
-				EVP_PKEY_free(pubkey);
-#endif
-			}
-		}
-	}
+	no_point = pkcs11_get_point_key(ec, key);
+	if (no_point && key->isPrivate) /* Retry with the public key */
+		no_point = pkcs11_get_point_key(ec, pkcs11_find_key_from_key(key));
+	if (no_point && key->isPrivate) /* Retry with the certificate */
+		no_point = pkcs11_get_point_cert(ec, pkcs11_find_certificate(key));
 
-	if (key->isPrivate && (EC_KEY_get0_private_key(ec)) == NULL) {
-		bn = BN_new();
+	if (key->isPrivate && EC_KEY_get0_private_key(ec) == NULL) {
+		BIGNUM *bn = BN_new();
 		EC_KEY_set_private_key(ec, bn);
 		BN_free(bn);
 	}
@@ -299,7 +305,6 @@ static EC_KEY *pkcs11_get_ec(PKCS11_KEY *key)
 		EC_KEY_free(ec);
 		return NULL;
 	}
-
 	return ec;
 }
 
