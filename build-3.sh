@@ -7,12 +7,17 @@ unset CPPFLAGS
 
 DEBUG="-g"
 
-if [ "z${OPENSSL_DIR}" = "z" ]; then
-  OPENSSL_DIR="$HOME/openssl-3"
+if [ "z${OPENSSL_DIR}" == "z" ]; then
+  OPENSSL_DIR="${HOME}/openssl-3"
 fi
-if [ "z${ENGINESDIR}" = "z" ]; then
+if [ "z${ENGINESDIR}" == "z" ]; then
   ENGINESDIR="${OPENSSL_DIR}/lib/engines-3"
 fi
+
+echo ""
+echo "OPENSSL_DIR=${OPENSSL_DIR}"
+echo "ENGINESDIR=${ENGINESDIR}"
+echo ""
 
 export OPENSSL_CFLAGS="${CFLAGS} ${DEBUG} -I${OPENSSL_DIR}/include"
 export OPENSSL_LIBS="-L${OPENSSL_DIR}/lib -lssl -lcrypto"
