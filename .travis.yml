@@ -7,7 +7,7 @@ env:
     #   via the "travis encrypt" command using the project repo's public key
     - secure: "o1Gatu7TwkfWYzmUht2+N5S7dhxUjcajFBT3cRoj3xXH0ghCZ2Yyu+yRDakYujIXb1waUMiwNdPQOxjEbo/2oLRoV3E29wi6bZWhO7RBymM6zHTEoGY7F2XXYOxWlVeU2x4TrYS7UWgosCK1Hi3A0nOnvbMQFfV8F5R0RouKJvM="
     - COVERITY_SCAN_BRANCH_PATTERN="(master|coverity.*)"
-    - COVERITY_SCAN_NOTIFICATION_EMAIL="Michal.Trojnara@stunnel.org"
+    - COVERITY_SCAN_NOTIFICATION_EMAIL="uri@mit.edu"
     - COVERITY_SCAN_BUILD_COMMAND="make"
     - COVERITY_SCAN_PROJECT_NAME="$TRAVIS_REPO_SLUG"
     - SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
@@ -21,10 +21,7 @@ compiler:
 
 os:
   - linux
-  #- osx
-
-# OS X only supports one image. Use the latest.
-#osx_image: xcode9.4
+  - osx
 
 matrix:
   include:
