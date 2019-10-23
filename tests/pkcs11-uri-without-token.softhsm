@@ -50,6 +50,7 @@ PUBLIC_KEY="pkcs11:object=server-key;type=public;pin-value=1234"
 echo "secret" >"${outdir}/in.txt"
 
 # Generate signature without specifying the token in the PKCS#11 URI
+openssl version
 openssl pkeyutl -engine pkcs11 -keyform engine -inkey "${PRIVATE_KEY}" \
 	-sign -out "${outdir}/signature.bin" -in "${outdir}/in.txt"
 if test $? != 0;then
