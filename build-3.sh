@@ -33,4 +33,9 @@ make distclean || true
 autoreconf -ivf 
 ./configure --disable-silent-rules --prefix=${OPENSSL_DIR} --with-pkcs11-module=/Library/OpenSC/lib/opensc-pkcs11.dylib --with-enginesdir="${ENGINESDIR}/"  2>&1 | tee conf-3-out.txt && make clean && make -j 2  all 2>&1 | tee make-3-out.txt && make check 2>&1 | tee check-3-out.txt && make install
 
+if [ -z "$CI" ]; then
+	if [ -e ${ENGINESDIR}/pkcs11.dylib ]; then
+		codesign -s "Mac Developer: uri@mit.edu (7TWWJNH7TG)" ${ENGINESDIR}/pkcs11.dylib
+	fi
+fi
 #
