@@ -94,8 +94,8 @@ fi
 #install_from_github mouse07410 OpenSC master 
 install_from_github OpenSC OpenSC master
 # softhsm is required for "make check"
-install_from_github opendnssec SoftHSMv2 master --disable-gost --disable-eddsa \
-    ${SOFTHSM_OPENSSL_DIR}
+echo "Installing SoftHSMv2 using OpenSSL in ${SOFTHSM_OPENSSL_DIR}"
+install_from_github opendnssec SoftHSMv2 master --disable-gost --disable-eddsa ${SOFTHSM_OPENSSL_DIR}
 
 cd ..
 rm -rf prerequisites
