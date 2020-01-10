@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <openssl/engine.h>
 #include <openssl/conf.h>
@@ -29,7 +30,8 @@
 
 static void usage(char *argv[])
 {
-	fprintf(stderr, "%s [certificate (PEM)] [private key URL] [module] [conf]\n", argv[0]);
+	fprintf(stderr, "%s [certificate (PEM or URL)] [private key URL] "
+            "[module] [conf]\n", argv[0]);
 }
 
 static void display_openssl_errors(int l)
@@ -50,14 +52,19 @@ static void display_openssl_errors(int l)
 
 int main(int argc, char *argv[])
 {
-	ENGINE *engine;
-	EVP_PKEY *pkey;
-	X509 *cert;
-	FILE *cert_fp;
+	ENGINE *engine = NULL;
+	EVP_PKEY *pkey = NULL;
+	X509 *cert = NULL;
+	FILE *cert_fp = NULL;
 
 	const char *module, *efile, *certfile, *privkey;
 
 	int ret = 0;
+
+	struct {
+		const char *cert_id;
+		X509 *cert;
+	} params = {0};
 
 	if (argc < 4){
 		printf("Too few arguments\n");
@@ -70,6 +77,7 @@ int main(int argc, char *argv[])
 	module = argv[3];
 	efile = argv[4];
 
+#if 0
 	cert_fp = fopen(certfile, "rb");
 	if (!cert_fp) {
 		fprintf(stderr, "%s:%d Could not open file %s\n", __FILE__, __LINE__, certfile);
@@ -86,6 +94,7 @@ int main(int argc, char *argv[])
 	if (cert_fp) {
 		fclose(cert_fp);
 	}
+#endif
 
 	ret = CONF_modules_load_file(efile, "engines", 0);
 	if (ret <= 0) {
@@ -131,6 +140,33 @@ int main(int argc, char *argv[])
 		display_openssl_errors(__LINE__);
 		ret = 1;
 		goto end;
+	}
+
+	if (!strncmp(certfile, "pkcs11:", 7)) {
+		params.cert_id = certfile;
+		if (!ENGINE_ctrl_cmd(engine, "LOAD_CERT_CTRL", 0, &params, NULL, 1)) {
+			fprintf(stderr, "Could not get certificate %s\n", certfile);
+			ret = 1;
+			goto end;
+		}
+		cert = params.cert;
+	} else {
+		cert_fp = fopen(certfile, "rb");
+		if (!cert_fp) {
+			fprintf(stderr, "Could not open file %s\n", certfile);
+			ret = 1;
+			goto end;
+		}
+
+		cert = PEM_read_X509(cert_fp, NULL, NULL, NULL);
+		if (!cert) {
+			fprintf(stderr, "Could not read certificate file"
+					"(must be PEM format)\n");
+		}
+
+		if (cert_fp) {
+			fclose(cert_fp);
+		}
 	}
 
 	pkey = ENGINE_load_private_key(engine, privkey, 0, 0);
