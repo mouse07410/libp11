@@ -35,7 +35,7 @@ autoreconf -ivf
 
 if [ -z "$CI" ]; then
 	if [ -e ${ENGINESDIR}/pkcs11.dylib ]; then
-		codesign -s "Mac Developer: uri@mit.edu (7TWWJNH7TG)" ${ENGINESDIR}/pkcs11.dylib
+		codesign -s "Apple Development: uri@mit.edu (7TWWJNH7TG)" ${ENGINESDIR}/pkcs11.dylib
 	fi
 fi
 #

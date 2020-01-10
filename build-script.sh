@@ -10,7 +10,7 @@ autoreconf -iv && CFLAGS="$CFLAGS ${DEBUG}" LDFLAGS="${DEBUG} $LDFLAGS" ./config
 sudo chown -R uri * || true
 if [ -z "$CI" ]; then
 	if [ -e /opt/local/lib/engines-1.1/pkcs11.dylib ]; then
-		sudo codesign -s "Mac Developer: uri@mit.edu (7TWWJNH7TG)" /opt/local/lib/engines-1.1/pkcs11.dylib
+		sudo codesign -s "Apple Development: uri@mit.edu (7TWWJNH7TG)" /opt/local/lib/engines-1.1/pkcs11.dylib
 	fi
 fi
 
