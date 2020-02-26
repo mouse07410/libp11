@@ -1,7 +1,12 @@
 #!/bin/bash -ex
 
+make distclean || true
+
+unset OPENSSL_INCLUDE_DIR
+unset OPENSSL_LIB_DIR
 unset OPENSSL_CFLAGS
 unset OPENSSL_LIBS
+unset OPENSSL_CONF
 unset LDFLAGS
 unset CPPFLAGS
 
@@ -24,8 +29,6 @@ export OPENSSL_LIBS="-L${OPENSSL_DIR}/lib -lssl -lcrypto"
 export LDFLAGS="${DEBUG} "
 export CPPFLAGS="${DEBUG} "
 export PKG_CONFIG_PATH="${OPENSSL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH}"
-
-make distclean || true
 
 # Build libp11 flexible, using URI via p11-kit
 
