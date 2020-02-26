@@ -43,7 +43,9 @@ init_db
 # Create some devices
 create_devices $NUM_DEVICES $PIN $PUK "libp11-test" "label"
 
+OSSL_VER=`openssl version`
 echo "Detected system: ${OSTYPE}"
+echo "${OSSL_VER}"
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
     SHARED_EXT=.dylib
