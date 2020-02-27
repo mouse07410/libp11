@@ -14,6 +14,7 @@ DEBUG="-g"
 
 if [ "z${OPENSSL_DIR}" == "z" ]; then
   OPENSSL_DIR="${HOME}/openssl-3"
+  export PATH="${OPENSSL_DIR}/openssl-3/bin:${PATH}"
 fi
 if [ "z${ENGINESDIR}" == "z" ]; then
   ENGINESDIR="${OPENSSL_DIR}/lib/engines-3"

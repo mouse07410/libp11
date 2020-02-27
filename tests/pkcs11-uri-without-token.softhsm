@@ -28,6 +28,7 @@ outdir="output.$$"
 common_init
 
 echo "Detected system: ${OSTYPE}"
+echo "`openssl version`"
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
     SHARED_EXT=.dylib
