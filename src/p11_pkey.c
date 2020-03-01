@@ -36,7 +36,6 @@ static int (*orig_pkey_ec_sign) (EVP_PKEY_CTX *ctx,
 	const unsigned char *tbs, size_t tbslen);
 #endif /* OPENSSL_NO_EC */
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 struct evp_pkey_method_st {
 	int pkey_id;
 	int flags;
@@ -75,6 +74,9 @@ struct evp_pkey_method_st {
 	int (*ctrl) (EVP_PKEY_CTX *ctx, int type, int p1, void *p2);
 	int (*ctrl_str) (EVP_PKEY_CTX *ctx, const char *type, const char *value);
 } /* EVP_PKEY_METHOD */ ;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+#define EVP_PKEY_FLAG_DYNAMIC 1
 #endif
 
 #if OPENSSL_VERSION_NUMBER < 0x10002000L || defined(LIBRESSL_VERSION_NUMBER)
@@ -97,7 +99,7 @@ typedef struct {
 static int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 {
 	RSA_PKEY_CTX *rctx = EVP_PKEY_CTX_get_data(ctx);
-	if (rctx == NULL)
+	if (!rctx)
 		return -1;
 	*pmd = rctx->md;
 	return 1;
@@ -110,7 +112,7 @@ static int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 static int EVP_PKEY_CTX_get_rsa_oaep_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 {
 	RSA_PKEY_CTX *rctx = EVP_PKEY_CTX_get_data(ctx);
-	if (rctx == NULL)
+	if (!rctx)
 		return -1;
 	*pmd = rctx->md;
 	return 1;
@@ -123,7 +125,7 @@ static int EVP_PKEY_CTX_get_rsa_oaep_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 static int EVP_PKEY_CTX_get_rsa_mgf1_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 {
 	RSA_PKEY_CTX *rctx = EVP_PKEY_CTX_get_data(ctx);
-	if (rctx == NULL)
+	if (!rctx)
 		return -1;
 	*pmd = rctx->mgf1md;
 	return 1;
@@ -132,7 +134,7 @@ static int EVP_PKEY_CTX_get_rsa_mgf1_md(EVP_PKEY_CTX *ctx, const EVP_MD **pmd)
 static int EVP_PKEY_CTX_get_rsa_padding(EVP_PKEY_CTX *ctx, int *padding)
 {
 	RSA_PKEY_CTX *rctx = EVP_PKEY_CTX_get_data(ctx);
-	if (rctx == NULL)
+	if (!rctx)
 		return -1;
 	*padding = rctx->pad_mode;
 	return 1;
@@ -141,7 +143,7 @@ static int EVP_PKEY_CTX_get_rsa_padding(EVP_PKEY_CTX *ctx, int *padding)
 static int EVP_PKEY_CTX_get_rsa_pss_saltlen(EVP_PKEY_CTX *ctx, int *saltlen)
 {
 	RSA_PKEY_CTX *rctx = EVP_PKEY_CTX_get_data(ctx);
-	if (rctx == NULL)
+	if (!rctx)
 		return -1;
 	*saltlen = rctx->saltlen;
 	return 1;
@@ -233,18 +235,18 @@ static int pkcs11_params_pss(CK_RSA_PKCS_PSS_PARAMS *pss,
 	if (!EVP_PKEY_CTX_get_rsa_pss_saltlen(ctx, &salt_len))
 		return -1;
 	switch (salt_len) {
-		case -1:
-			salt_len = EVP_MD_size(sig_md);
-			break;
-		case -2:
-			evp_pkey = EVP_PKEY_CTX_get0_pkey(ctx);
-			if (evp_pkey == NULL)
-				return -1;
-			salt_len = EVP_PKEY_size(evp_pkey) - EVP_MD_size(sig_md) - 2;
-			if (((EVP_PKEY_bits(evp_pkey) - 1) & 0x7) == 0)
-				salt_len--;
-			if (salt_len < 0) /* integer underflow detected */
-				return -1;
+	case -1:
+		salt_len = EVP_MD_size(sig_md);
+		break;
+	case -2:
+		evp_pkey = EVP_PKEY_CTX_get0_pkey(ctx);
+		if (!evp_pkey)
+			return -1;
+		salt_len = EVP_PKEY_size(evp_pkey) - EVP_MD_size(sig_md) - 2;
+		if (((EVP_PKEY_bits(evp_pkey) - 1) & 0x7) == 0)
+			salt_len--;
+		if (salt_len < 0) /* integer underflow detected */
+			return -1;
 	}
 #ifdef DEBUG
 	fprintf(stderr, "salt_len=%d sig_md=%s mdf1_md=%s\n",
@@ -311,10 +313,10 @@ static int pkcs11_try_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 		__FILE__, __LINE__, sig, *siglen, tbs, tbslen);
 #endif
 	pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx);
-	if (pkey == NULL)
+	if (!pkey)
 		return -1;
 	rsa = EVP_PKEY_get0_RSA(pkey);
-	if (rsa == NULL)
+	if (!rsa)
 		return -1;
 	key = pkcs11_get_ex_data_rsa(rsa);
 	if (check_key_fork(key) < 0)
@@ -325,7 +327,7 @@ static int pkcs11_try_pkey_rsa_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 	spriv = PRIVSLOT(slot);
 	cpriv = PRIVCTX(ctx);
 
-	if (evp_pkey_ctx == NULL)
+	if (!evp_pkey_ctx)
 		return -1;
 	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sig_md) <= 0)
 		return -1;
@@ -415,10 +417,10 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 		__FILE__, __LINE__, out, *outlen, in, inlen);
 #endif
 	pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx);
-	if (pkey == NULL)
+	if (!pkey)
 		return -1;
 	rsa = EVP_PKEY_get0_RSA(pkey);
-	if (rsa == NULL)
+	if (!rsa)
 		return -1;
 	key = pkcs11_get_ex_data_rsa(rsa);
 	if (check_key_fork(key) < 0)
@@ -429,7 +431,7 @@ static int pkcs11_try_pkey_rsa_decrypt(EVP_PKEY_CTX *evp_pkey_ctx,
 	spriv = PRIVSLOT(slot);
 	cpriv = PRIVCTX(ctx);
 
-	if (evp_pkey_ctx == NULL)
+	if (!evp_pkey_ctx)
 		return -1;
 
 	if (!cpriv->decrypt_initialized) {
@@ -516,6 +518,11 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_rsa()
 	new_meth = EVP_PKEY_meth_new(EVP_PKEY_RSA,
 		EVP_PKEY_FLAG_AUTOARGLEN);
 
+#ifdef EVP_PKEY_FLAG_DYNAMIC
+	/* do not allow OpenSSL to free this object */
+	new_meth->flags &= ~EVP_PKEY_FLAG_DYNAMIC;
+#endif
+
 	EVP_PKEY_meth_copy(new_meth, orig_meth);
 
 	EVP_PKEY_meth_set_sign(new_meth,
@@ -552,15 +559,15 @@ static int pkcs11_try_pkey_ec_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 #endif
 
 	ossl_sig = ECDSA_SIG_new();
-	if (ossl_sig == NULL)
+	if (!ossl_sig)
 		return -1;
 
 	pkey = EVP_PKEY_CTX_get0_pkey(evp_pkey_ctx);
-	if (pkey == NULL)
+	if (!pkey)
 		return -1;
 
 	eckey = (EC_KEY *)EVP_PKEY_get0_EC_KEY(pkey);
-	if (eckey == NULL)
+	if (!eckey)
 		return -1;
 
 	if (*siglen < (size_t)ECDSA_size(eckey))
@@ -576,7 +583,7 @@ static int pkcs11_try_pkey_ec_sign(EVP_PKEY_CTX *evp_pkey_ctx,
 	spriv = PRIVSLOT(slot);
 	cpriv = PRIVCTX(ctx);
 
-	if (evp_pkey_ctx == NULL)
+	if (!evp_pkey_ctx)
 		return -1;
 
 	if (EVP_PKEY_CTX_get_signature_md(evp_pkey_ctx, &sig_md) <= 0)
@@ -655,6 +662,11 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_ec()
 	new_meth = EVP_PKEY_meth_new(EVP_PKEY_EC,
 		EVP_PKEY_FLAG_AUTOARGLEN);
 
+#ifdef EVP_PKEY_FLAG_DYNAMIC
+	/* do not allow OpenSSL to free this object */
+	new_meth->flags &= ~EVP_PKEY_FLAG_DYNAMIC;
+#endif
+
 	EVP_PKEY_meth_copy(new_meth, orig_meth);
 
 	EVP_PKEY_meth_set_sign(new_meth,
@@ -673,8 +685,8 @@ int PKCS11_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		EVP_PKEY_EC,
 		0
 	};
-	EVP_PKEY_METHOD *pkey_method_rsa = NULL;
-	EVP_PKEY_METHOD *pkey_method_ec = NULL;
+	static EVP_PKEY_METHOD *pkey_method_rsa = NULL;
+	static EVP_PKEY_METHOD *pkey_method_ec = NULL;
 
 	(void)e; /* squash the unused parameter warning */
 	/* all PKCS#11 engines currently share the same pkey_meths */
@@ -687,15 +699,17 @@ int PKCS11_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	/* get the EVP_PKEY_METHOD */
 	switch (nid) {
 	case EVP_PKEY_RSA:
-		pkey_method_rsa = pkcs11_pkey_method_rsa();
-		if (pkey_method_rsa == NULL)
+		if (!pkey_method_rsa)
+			pkey_method_rsa = pkcs11_pkey_method_rsa();
+		if (!pkey_method_rsa)
 			return 0;
 		*pmeth = pkey_method_rsa;
 		return 1; /* success */
 #ifndef OPENSSL_NO_EC
 	case EVP_PKEY_EC:
-		pkey_method_ec = pkcs11_pkey_method_ec();
-		if (pkey_method_ec == NULL)
+		if (!pkey_method_ec)
+			pkey_method_ec = pkcs11_pkey_method_ec();
+		if (!pkey_method_ec)
 			return 0;
 		*pmeth = pkey_method_ec;
 		return 1; /* success */

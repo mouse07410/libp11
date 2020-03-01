@@ -56,18 +56,23 @@ int pkcs11_enumerate_slots(PKCS11_CTX *ctx, PKCS11_SLOT **slotp,
 	if (alloc_size / sizeof(CK_SLOT_ID) != nslots) /* integer overflow */
 		return -1;
 	slotid = OPENSSL_malloc(alloc_size);
-	if (slotid == NULL)
+	if (!slotid)
 		return -1;
 
 	rv = cpriv->method->C_GetSlotList(FALSE, slotid, &nslots);
 	CRYPTOKI_checkerr(CKR_F_PKCS11_ENUMERATE_SLOTS, rv);
 
 	alloc_size = nslots * sizeof(PKCS11_SLOT);
-	if (alloc_size / sizeof(PKCS11_SLOT) != nslots) /* integer overflow */
+	if (alloc_size / sizeof(PKCS11_SLOT) != nslots) { /* integer overflow */
+		OPENSSL_free(slotid);
 		return -1;
+	}
 	slots = OPENSSL_malloc(alloc_size);
-	if (slots == NULL)
+	if (!slots) {
+		OPENSSL_free(slotid);
 		return -1;
+	}
+
 	memset(slots, 0, nslots * sizeof(PKCS11_SLOT));
 	for (n = 0; n < nslots; n++) {
 		if (pkcs11_init_slot(ctx, &slots[n], slotid[n])) {
@@ -101,13 +106,13 @@ PKCS11_SLOT *pkcs11_find_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots,
 
 	(void)ctx;
 
-	if (slots == NULL)
+	if (!slots)
 		return NULL;
 
 	best = NULL;
 	for (n = 0, slot = slots; n < nslots; n++, slot++) {
 		if ((tok = slot->token) != NULL) {
-			if (best == NULL ||
+			if (!best ||
 					(tok->initialized > best->token->initialized &&
 					tok->userPinSet > best->token->userPinSet &&
 					tok->loginRequired > best->token->loginRequired))
@@ -125,7 +130,7 @@ PKCS11_SLOT *pkcs11_find_next_token(PKCS11_CTX *ctx, PKCS11_SLOT *slots,
 {
 	int offset;
 
-	if (slots == NULL)
+	if (!slots)
 		return NULL;
 
 	if (current) {
@@ -298,7 +303,7 @@ int pkcs11_init_token(PKCS11_TOKEN *token, const char *pin, const char *label)
 	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 	int rv;
 
-	if (label == NULL)
+	if (!label)
 		label = "PKCS#11 Token";
 	rv = CRYPTOKI_call(ctx,
 		C_InitToken(spriv->id,
@@ -423,7 +428,7 @@ static int pkcs11_init_slot(PKCS11_CTX *ctx, PKCS11_SLOT *slot, CK_SLOT_ID id)
 	CRYPTOKI_checkerr(CKR_F_PKCS11_INIT_SLOT, rv);
 
 	spriv = OPENSSL_malloc(sizeof(PKCS11_SLOT_private));
-	if (spriv == NULL)
+	if (!spriv)
 		return -1;
 	memset(spriv, 0, sizeof(PKCS11_SLOT_private));
 
@@ -488,7 +493,7 @@ static int pkcs11_check_token(PKCS11_CTX *ctx, PKCS11_SLOT *slot)
 		pkcs11_destroy_token(slot->token);
 	} else {
 		slot->token = OPENSSL_malloc(sizeof(PKCS11_TOKEN));
-		if (slot->token == NULL)
+		if (!slot->token)
 			return -1;
 		memset(slot->token, 0, sizeof(PKCS11_TOKEN));
 	}
@@ -503,7 +508,7 @@ static int pkcs11_check_token(PKCS11_CTX *ctx, PKCS11_SLOT *slot)
 
 	/* We have a token */
 	tpriv = OPENSSL_malloc(sizeof(PKCS11_TOKEN_private));
-	if (tpriv == NULL)
+	if (!tpriv)
 		return -1;
 	memset(tpriv, 0, sizeof(PKCS11_TOKEN_private));
 	tpriv->parent = slot;
