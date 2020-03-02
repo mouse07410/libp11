@@ -23,6 +23,10 @@ echo "Output directory: ${outdir}"
 
 mkdir -p $outdir
 
+if [ ! -z "${OPENSSL_DIR}" ]; then
+	export PATH="${OPENSSL_DIR}/bin:${PATH}"
+fi
+
 # Set the module to be used
 for i in /usr/lib64/pkcs11 /usr/lib64/softhsm /usr/lib/x86_64-linux-gnu/softhsm \
 	/usr/local/lib/softhsm /opt/local/lib/softhsm /usr/lib/softhsm /usr/lib ;do

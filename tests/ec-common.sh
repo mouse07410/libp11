@@ -30,6 +30,12 @@ esac
 echo "Current directory: $(pwd)"
 echo "Source directory: ${srcdir}"
 echo "Output directory: ${outdir}"
+echo "OPENSSL_DIR: ${OPENSSL_DIR}"
+
+if [ ! -z "${OPENSSL_DIR}" ]; then
+	export PATH="${OPENSSL_DIR}/bin:$PATH"
+fi
+echo "PATH: ${PATH}"
 
 mkdir -p $outdir
 

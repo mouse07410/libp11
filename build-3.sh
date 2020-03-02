@@ -35,7 +35,7 @@ export PKG_CONFIG_PATH="${OPENSSL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 # Build libp11 fixed for OpenSC PKCS#11 library (seems necessary for OpenSSL-3.0 master)
 autoreconf -ivf 
-./configure --disable-silent-rules --prefix=${OPENSSL_DIR} --with-pkcs11-module=/Library/OpenSC/lib/opensc-pkcs11.dylib --with-enginesdir="${ENGINESDIR}/"  2>&1 | tee conf-3-out.txt && make clean && make -j 2  all 2>&1 | tee make-3-out.txt && make check 2>&1 | tee check-3-out.txt && make install
+./configure --disable-silent-rules --prefix=${OPENSSL_DIR} --with-pkcs11-module=/Library/OpenSC/lib/opensc-pkcs11.dylib --with-enginesdir="${ENGINESDIR}/"  2>&1 | tee conf-3-out.txt && make clean && make -j 2  all 2>&1 | tee make-3-out.txt && OPENSSL_DIR="${OPENSSL_DIR}" make check 2>&1 | tee check-3-out.txt && make install
 
 if [ -z "$CI" ]; then
 	if [ -e ${ENGINESDIR}/pkcs11.dylib ]; then

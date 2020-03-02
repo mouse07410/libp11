@@ -30,6 +30,8 @@ export OPENSSL_ENGINES="../src/.libs/"
 PRIVATE_KEY="pkcs11:token=libp11-test;id=%01%02%03%04;object=server-key;type=private;pin-value=1234"
 PUBLIC_KEY="pkcs11:token=libp11-test;id=%01%02%03%04;object=server-key;type=public;pin-value=1234"
 
+echo "`openssl version`"
+
 ./evp-sign ctrl false "${outdir}/engines.cnf" ${PRIVATE_KEY} ${PUBLIC_KEY} ${MODULE}
 if test $? != 0;then
 	echo "Basic PKCS #11 test, using ctrl failed"
