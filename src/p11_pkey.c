@@ -659,8 +659,12 @@ static EVP_PKEY_METHOD *pkcs11_pkey_method_ec()
 	EVP_PKEY_meth_get_sign(orig_meth,
 		&orig_pkey_ec_sign_init, &orig_pkey_ec_sign);
 
+#if 0
 	new_meth = EVP_PKEY_meth_new(EVP_PKEY_EC,
 		EVP_PKEY_FLAG_AUTOARGLEN);
+#else
+	new_meth = EVP_PKEY_meth_new(EVP_PKEY_EC, 0);
+#endif /* workaround FLAG_AUTOARGLEN */
 
 #ifdef EVP_PKEY_FLAG_DYNAMIC
 	/* do not allow OpenSSL to free this object */
