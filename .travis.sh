@@ -67,7 +67,8 @@ install_openssl() {
 }
 
 if [ $TRAVIS_OS_NAME = 'osx' ]; then
-    brew update
+    export HOMEBREW_NO_AUTO_UPDATE=1
+    export HOMEBREW_NO_INSTALL_CLEANUP=1
     brew install pcsc-lite
     brew link --force pcsc-lite
 else
@@ -92,7 +93,9 @@ if [ -n "${OPENSSL}" ]; then
 fi
 
 #install_from_github mouse07410 OpenSC master 
-install_from_github OpenSC OpenSC master
+# sometimes git master has compile warnings in it
+install_from_github OpenSC OpenSC master --disable-strict
+
 # softhsm is required for "make check"
 echo "Installing SoftHSMv2 using OpenSSL in ${SOFTHSM_OPENSSL_DIR}"
 install_from_github opendnssec SoftHSMv2 master --disable-gost --disable-eddsa ${SOFTHSM_OPENSSL_DIR}
