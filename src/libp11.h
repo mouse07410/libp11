@@ -513,13 +513,14 @@ P11_DEPRECATED_FUNC extern int PKCS11_private_decrypt(
 # define CKR_F_PKCS11_PRIVATE_DECRYPT                     121
 # define CKR_F_PKCS11_PRIVATE_ENCRYPT                     122
 # define CKR_F_PKCS11_RELOAD_KEY                          123
-# define CKR_F_PKCS11_REOPEN_SESSION                      124
 # define CKR_F_PKCS11_SEED_RANDOM                         125
 # define CKR_F_PKCS11_STORE_CERTIFICATE                   126
 # define CKR_F_PKCS11_STORE_KEY                           127
 # define CKR_F_PKCS11_REMOVE_KEY                          128
 # define CKR_F_PKCS11_REMOVE_CERTIFICATE                  129
 # define CKR_F_PKCS11_GENERATE_KEY                        130
+# define CKR_F_PKCS11_RELOAD_CERTIFICATE                  131
+# define CKR_F_PKCS11_GET_SESSION                         132
 
 /* Backward compatibility of error function codes */
 #define PKCS11_F_PKCS11_CHANGE_PIN CKR_F_PKCS11_CHANGE_PIN
@@ -546,7 +547,6 @@ P11_DEPRECATED_FUNC extern int PKCS11_private_decrypt(
 #define PKCS11_F_PKCS11_PRIVATE_DECRYPT CKR_F_PKCS11_PRIVATE_DECRYPT
 #define PKCS11_F_PKCS11_PRIVATE_ENCRYPT CKR_F_PKCS11_PRIVATE_ENCRYPT
 #define PKCS11_F_PKCS11_RELOAD_KEY CKR_F_PKCS11_RELOAD_KEY
-#define PKCS11_F_PKCS11_REOPEN_SESSION CKR_F_PKCS11_REOPEN_SESSION
 #define PKCS11_F_PKCS11_SEED_RANDOM CKR_F_PKCS11_SEED_RANDOM
 #define PKCS11_F_PKCS11_STORE_CERTIFICATE CKR_F_PKCS11_STORE_CERTIFICATE
 #define PKCS11_F_PKCS11_STORE_KEY CKR_F_PKCS11_STORE_KEY

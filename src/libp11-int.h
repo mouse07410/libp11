@@ -29,11 +29,7 @@
 #define CRYPTOKI_EXPORTS
 #include "pkcs11.h"
 
-#if OPENSSL_VERSION_NUMBER < 0x10100004L || defined(LIBRESSL_VERSION_NUMBER)
-typedef int PKCS11_RWLOCK;
-#else
-typedef CRYPTO_RWLOCK *PKCS11_RWLOCK;
-#endif
+#include "p11_pthread.h"
 
 /* get private implementations of PKCS11 structures */
 
@@ -47,23 +43,23 @@ typedef struct pkcs11_ctx_private {
 	UI_METHOD *ui_method; /* UI_METHOD for CKU_CONTEXT_SPECIFIC PINs */
 	void *ui_user_data;
 	unsigned int forkid;
-	PKCS11_RWLOCK rwlock;
-	int sign_initialized;
-	int decrypt_initialized;
+	pthread_mutex_t fork_lock;
 } PKCS11_CTX_private;
 #define PRIVCTX(ctx)		((PKCS11_CTX_private *) ((ctx)->_private))
 
 typedef struct pkcs11_slot_private {
 	PKCS11_CTX *parent;
-	unsigned char haveSession, loggedIn;
+	pthread_mutex_t lock;
+	pthread_cond_t cond;
+	int8_t rw_mode, logged_in;
 	CK_SLOT_ID id;
-	CK_SESSION_HANDLE session;
+	CK_SESSION_HANDLE *session_pool;
+	unsigned int session_head, session_tail, session_poolsize;
+	unsigned int num_sessions, max_sessions;
 	unsigned int forkid;
-	int prev_rw; /* the rw status the session was open */
 
 	/* options used in last PKCS11_login */
 	char *prev_pin;
-	int prev_so;
 } PKCS11_SLOT_private;
 #define PRIVSLOT(slot)		((PKCS11_SLOT_private *) ((slot)->_private))
 #define SLOT2CTX(slot)		(PRIVSLOT(slot)->parent)
@@ -108,6 +104,7 @@ typedef struct pkcs11_cert_private {
 	CK_OBJECT_HANDLE object;
 	unsigned char id[255];
 	size_t id_len;
+	unsigned int forkid;
 } PKCS11_CERT_private;
 #define PRIVCERT(cert)		((PKCS11_CERT_private *) (cert)->_private)
 #define CERT2SLOT(cert)		TOKEN2SLOT(CERT2TOKEN(cert))
@@ -137,20 +134,6 @@ extern int ERR_load_CKR_strings(void);
 	pkcs11_strdup((char *) s, sizeof(s))
 extern char *pkcs11_strdup(char *, size_t);
 
-/* Emulate the OpenSSL 1.1 locking API for older OpenSSL versions */
-#if OPENSSL_VERSION_NUMBER < 0x10100004L || defined(LIBRESSL_VERSION_NUMBER)
-int CRYPTO_THREAD_lock_new();
-void CRYPTO_THREAD_lock_free(int);
-#define CRYPTO_THREAD_write_lock(type) \
-	if(type) CRYPTO_lock(CRYPTO_LOCK|CRYPTO_WRITE,type,__FILE__,__LINE__)
-#define CRYPTO_THREAD_unlock(type) \
-	if(type) CRYPTO_lock(CRYPTO_UNLOCK|CRYPTO_WRITE,type,__FILE__,__LINE__)
-#define CRYPTO_THREAD_read_lock(type) \
-	if(type) CRYPTO_lock(CRYPTO_LOCK|CRYPTO_READ,type,__FILE__,__LINE__)
-#define CRYPTO_THREAD_read_unlock(type) \
-	if(type) CRYPTO_lock(CRYPTO_UNLOCK|CRYPTO_READ,type,__FILE__,__LINE__)
-#endif
-
 /* Emulate the OpenSSL 1.1 getters */
 #if OPENSSL_VERSION_NUMBER < 0x10100003L || defined(LIBRESSL_VERSION_NUMBER)
 #define EVP_PKEY_get0_RSA(key) ((key)->pkey.rsa)
@@ -171,38 +154,22 @@ extern CK_RV C_UnloadModule(void *module);
 extern void pkcs11_destroy_keys(PKCS11_TOKEN *, unsigned int);
 extern void pkcs11_destroy_certs(PKCS11_TOKEN *);
 extern int pkcs11_reload_key(PKCS11_KEY *);
-extern int pkcs11_reopen_session(PKCS11_SLOT * slot);
-extern int pkcs11_relogin(PKCS11_SLOT * slot);
+extern int pkcs11_reload_certificate(PKCS11_CERT *cert);
+extern int pkcs11_reload_slot(PKCS11_SLOT * slot);
 
 /* Managing object attributes */
-extern int pkcs11_getattr_var(PKCS11_TOKEN *, CK_OBJECT_HANDLE,
-	unsigned int, CK_BYTE *, size_t *);
-extern int pkcs11_getattr_val(PKCS11_TOKEN *, CK_OBJECT_HANDLE,
-	unsigned int, void *, size_t);
-extern int pkcs11_getattr_alloc(PKCS11_TOKEN *, CK_OBJECT_HANDLE,
-	unsigned int, CK_BYTE **, size_t *);
+extern int pkcs11_getattr_var(PKCS11_CTX *, CK_SESSION_HANDLE, CK_OBJECT_HANDLE,
+	CK_ATTRIBUTE_TYPE, CK_BYTE *, size_t *);
+extern int pkcs11_getattr_val(PKCS11_CTX *, CK_SESSION_HANDLE, CK_OBJECT_HANDLE,
+	CK_ATTRIBUTE_TYPE, void *, size_t);
+extern int pkcs11_getattr_alloc(PKCS11_CTX *, CK_SESSION_HANDLE, CK_OBJECT_HANDLE,
+	CK_ATTRIBUTE_TYPE, CK_BYTE **, size_t *);
 /*
  * Caution: the BIGNUM ** shall reference either a NULL pointer or a
  * pointer to a valid BIGNUM.
  */
-extern int pkcs11_getattr_bn(PKCS11_TOKEN *, CK_OBJECT_HANDLE,
-	unsigned int, BIGNUM **);
-
-#define key_getattr_var(key, t, p, s) \
-	pkcs11_getattr_var(KEY2TOKEN((key)), PRIVKEY((key))->object, (t), (p), (s))
-
-#define key_getattr_val(key, t, p, s) \
-	pkcs11_getattr_val(KEY2TOKEN((key)), PRIVKEY((key))->object, (t), (p), (s))
-
-#define key_getattr_alloc(key, t, p, s) \
-	pkcs11_getattr_alloc(KEY2TOKEN((key)), PRIVKEY((key))->object, (t), (p), (s))
-
-/*
- * Caution: bn shall reference either a NULL pointer or a pointer to
- * a valid BIGNUM.
- */
-#define key_getattr_bn(key, t, bn) \
-	pkcs11_getattr_bn(KEY2TOKEN((key)), PRIVKEY((key))->object, (t), (bn))
+extern int pkcs11_getattr_bn(PKCS11_CTX *, CK_SESSION_HANDLE, CK_OBJECT_HANDLE,
+	CK_ATTRIBUTE_TYPE, BIGNUM **);
 
 typedef int (*pkcs11_i2d_fn) (void *, unsigned char **);
 extern void pkcs11_addattr(CK_ATTRIBUTE_PTR, int, const void *, size_t);
@@ -259,7 +226,13 @@ extern void pkcs11_CTX_unload(PKCS11_CTX * ctx);
 extern void pkcs11_CTX_free(PKCS11_CTX * ctx);
 
 /* Open a session in RO or RW mode */
-extern int pkcs11_open_session(PKCS11_SLOT * slot, int rw, int relogin);
+extern int pkcs11_open_session(PKCS11_SLOT * slot, int rw);
+
+/* Acquire a session from the slot specific session pool */
+extern int pkcs11_get_session(PKCS11_SLOT * slot, int rw, CK_SESSION_HANDLE *sessionp);
+
+/* Return a session the the slot specific session pool */
+extern void pkcs11_put_session(PKCS11_SLOT * slot, CK_SESSION_HANDLE session);
 
 /* Get a list of all slots */
 extern int pkcs11_enumerate_slots(PKCS11_CTX * ctx,
@@ -285,13 +258,13 @@ extern PKCS11_SLOT *pkcs11_find_next_token(PKCS11_CTX * ctx,
 extern int pkcs11_is_logged_in(PKCS11_SLOT * slot, int so, int * res);
 
 /* Authenticate to the card */
-extern int pkcs11_login(PKCS11_SLOT * slot, int so, const char *pin, int relogin);
+extern int pkcs11_login(PKCS11_SLOT * slot, int so, const char *pin);
 
 /* De-authenticate from the card */
 extern int pkcs11_logout(PKCS11_SLOT * slot);
 
 /* Authenticate a private the key operation if needed */
-int pkcs11_authenticate(PKCS11_KEY *key);
+int pkcs11_authenticate(PKCS11_KEY *key, CK_SESSION_HANDLE session);
 
 /* Get a list of keys associated with this token */
 extern int pkcs11_enumerate_keys(PKCS11_TOKEN *token, unsigned int type,

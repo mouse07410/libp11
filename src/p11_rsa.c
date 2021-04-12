@@ -81,9 +81,9 @@ int pkcs11_private_encrypt(int flen,
 	PKCS11_SLOT *slot = KEY2SLOT(key);
 	PKCS11_CTX *ctx = KEY2CTX(key);
 	PKCS11_KEY_private *kpriv = PRIVKEY(key);
-	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
 	CK_MECHANISM mechanism;
 	CK_ULONG size;
+	CK_SESSION_HANDLE session;
 	int rv;
 
 	size = pkcs11_get_key_size(key);
@@ -91,26 +91,28 @@ int pkcs11_private_encrypt(int flen,
 	if (pkcs11_mechanism(&mechanism, padding) < 0)
 		return -1;
 
-	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
+	if (pkcs11_get_session(slot, 0, &session))
+		return -1;
+
 	/* Try signing first, as applications are more likely to use it */
 	rv = CRYPTOKI_call(ctx,
-		C_SignInit(spriv->session, &mechanism, kpriv->object));
+		C_SignInit(session, &mechanism, kpriv->object));
 	if (rv == CKR_USER_NOT_LOGGED_IN)
-		rv = pkcs11_authenticate(key);
+		rv = pkcs11_authenticate(key, session);
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-			C_Sign(spriv->session, (CK_BYTE *)from, flen, to, &size));
+			C_Sign(session, (CK_BYTE *)from, flen, to, &size));
 	if (rv == CKR_KEY_FUNCTION_NOT_PERMITTED) {
 		/* OpenSSL may use it for encryption rather than signing */
 		rv = CRYPTOKI_call(ctx,
-			C_EncryptInit(spriv->session, &mechanism, kpriv->object));
+			C_EncryptInit(session, &mechanism, kpriv->object));
 		if (rv == CKR_USER_NOT_LOGGED_IN)
-			rv = pkcs11_authenticate(key);
+			rv = pkcs11_authenticate(key, session);
 		if (!rv)
 			rv = CRYPTOKI_call(ctx,
-				C_Encrypt(spriv->session, (CK_BYTE *)from, flen, to, &size));
+				C_Encrypt(session, (CK_BYTE *)from, flen, to, &size));
 	}
-	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
+	pkcs11_put_session(slot, session);
 
 	if (rv) {
 		CKRerr(CKR_F_PKCS11_PRIVATE_ENCRYPT, rv);
@@ -127,7 +129,7 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	PKCS11_SLOT *slot = KEY2SLOT(key);
 	PKCS11_CTX *ctx = KEY2CTX(key);
 	PKCS11_KEY_private *kpriv = PRIVKEY(key);
-	PKCS11_SLOT_private *spriv = PRIVSLOT(slot);
+	CK_SESSION_HANDLE session;
 	CK_MECHANISM mechanism;
 	CK_ULONG size = flen;
 	CK_RV rv;
@@ -135,16 +137,18 @@ int pkcs11_private_decrypt(int flen, const unsigned char *from, unsigned char *t
 	if (pkcs11_mechanism(&mechanism, padding) < 0)
 		return -1;
 
-	CRYPTO_THREAD_write_lock(PRIVCTX(ctx)->rwlock);
+	if (pkcs11_get_session(slot, 0, &session))
+		return -1;
+
 	rv = CRYPTOKI_call(ctx,
-		C_DecryptInit(spriv->session, &mechanism, kpriv->object));
+		C_DecryptInit(session, &mechanism, kpriv->object));
 	if (rv == CKR_USER_NOT_LOGGED_IN)
-		rv = pkcs11_authenticate(key);
+		rv = pkcs11_authenticate(key, session);
 	if (!rv)
 		rv = CRYPTOKI_call(ctx,
-			C_Decrypt(spriv->session, (CK_BYTE *)from, size,
+			C_Decrypt(session, (CK_BYTE *)from, size,
 				(CK_BYTE_PTR)to, &size));
-	CRYPTO_THREAD_unlock(PRIVCTX(ctx)->rwlock);
+	pkcs11_put_session(slot, session);
 
 	if (rv) {
 		CKRerr(CKR_F_PKCS11_PRIVATE_DECRYPT, rv);
@@ -175,17 +179,24 @@ int pkcs11_verify(int type, const unsigned char *m, unsigned int m_len,
  */
 static RSA *pkcs11_get_rsa(PKCS11_KEY *key)
 {
-	RSA *rsa;
+	PKCS11_CTX *ctx = KEY2CTX(key);
+	PKCS11_SLOT *slot = KEY2SLOT(key);
 	PKCS11_KEY *keys;
+	CK_OBJECT_HANDLE object = PRIVKEY(key)->object;
+	CK_SESSION_HANDLE session;
+	RSA *rsa;
 	unsigned int i, count;
 	BIGNUM *rsa_n = NULL, *rsa_e = NULL;
 
-	/* Retrieve the modulus */
-	if (key_getattr_bn(key, CKA_MODULUS, &rsa_n))
+	if (pkcs11_get_session(slot, 0, &session))
 		return NULL;
 
+	/* Retrieve the modulus */
+	if (pkcs11_getattr_bn(ctx, session, object, CKA_MODULUS, &rsa_n))
+		goto failure;
+
 	/* Retrieve the public exponent */
-	if (!key_getattr_bn(key, CKA_PUBLIC_EXPONENT, &rsa_e)) {
+	if (!pkcs11_getattr_bn(ctx, session, object, CKA_PUBLIC_EXPONENT, &rsa_e)) {
 		if (!BN_is_zero(rsa_e)) /* A valid public exponent */
 			goto success;
 		BN_clear_free(rsa_e);
@@ -197,10 +208,12 @@ static RSA *pkcs11_get_rsa(PKCS11_KEY *key)
 	if (!PKCS11_enumerate_public_keys(KEY2TOKEN(key), &keys, &count)) {
 		for (i = 0; i < count; i++) {
 			BIGNUM *pubmod = NULL;
-			if (!key_getattr_bn(&keys[i], CKA_MODULUS, &pubmod)) {
+			if (!pkcs11_getattr_bn(ctx, session, PRIVKEY(&keys[i])->object,
+					CKA_MODULUS, &pubmod)) {
 				int found = BN_cmp(rsa_n, pubmod) == 0;
 				BN_clear_free(pubmod);
-				if (found && !key_getattr_bn(&keys[i],
+				if (found && !pkcs11_getattr_bn(ctx, session,
+						PRIVKEY(&keys[i])->object,
 						CKA_PUBLIC_EXPONENT, &rsa_e))
 					goto success;
 			}
@@ -213,6 +226,7 @@ static RSA *pkcs11_get_rsa(PKCS11_KEY *key)
 		goto success;
 
 failure:
+	pkcs11_put_session(slot, session);
 	if (rsa_n)
 		BN_clear_free(rsa_n);
 	if (rsa_e)
@@ -220,6 +234,7 @@ failure:
 	return NULL;
 
 success:
+	pkcs11_put_session(slot, session);
 	rsa = RSA_new();
 	if (!rsa)
 		goto failure;

@@ -40,9 +40,7 @@ PKCS11_CTX *pkcs11_CTX_new(void)
 	memset(ctx, 0, sizeof(PKCS11_CTX));
 	ctx->_private = cpriv;
 	cpriv->forkid = get_forkid();
-	cpriv->rwlock = CRYPTO_THREAD_lock_new();
-	cpriv->sign_initialized = 0;
-	cpriv->decrypt_initialized = 0;
+	pthread_mutex_init(&cpriv->fork_lock, 0);
 
 	return ctx;
 fail:
@@ -172,7 +170,7 @@ void pkcs11_CTX_free(PKCS11_CTX *ctx)
 	if (cpriv->handle) {
 		OPENSSL_free(cpriv->handle);
 	}
-	CRYPTO_THREAD_lock_free(cpriv->rwlock);
+	pthread_mutex_destroy(&cpriv->fork_lock);
 	OPENSSL_free(ctx->manufacturer);
 	OPENSSL_free(ctx->description);
 	OPENSSL_free(ctx->_private);
