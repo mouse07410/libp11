@@ -43,6 +43,8 @@ do
 
 	echo $PRIVATE_KEY
 
+      openssl --version
+
 	./evp-sign ctrl false "${outdir}/engines.cnf" ${PRIVATE_KEY} ${PUBLIC_KEY} ${MODULE}
 	if test $? != 0;then
 		echo "Basic PKCS #11 test, using ctrl failed"

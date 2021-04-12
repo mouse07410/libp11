@@ -10,7 +10,7 @@ VS_VERSION_INFO VERSIONINFO
 	FILEFLAGS 0x20L
 #endif
 	FILEOS 0x40004L
-	FILETYPE 0x1L
+	FILETYPE VFT_DLL
 	FILESUBTYPE 0x0L
 BEGIN
 	BLOCK "StringFileInfo"
@@ -30,6 +30,10 @@ BEGIN
 			VALUE "ProductVersion", "0.4.12.0\0"
 			VALUE "SpecialBuild", "\0"
 		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
 	END
 END
 

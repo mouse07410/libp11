@@ -254,7 +254,6 @@ static PKCS11_CTX *_g_pkcs11_ctx;
 /* Initialize libp11 data: ctx->pkcs11_ctx and ctx->slot_list */
 static int ctx_enumerate_slots(ENGINE_CTX *ctx, PKCS11_CTX *pkcs11_ctx)
 {
-	PKCS11_CTX  *pkcs11_ctx = NULL;
 	PKCS11_SLOT *slot_list = NULL;
 	unsigned int slot_count = 0;
 
@@ -283,7 +282,7 @@ static int ctx_enumerate_slots(ENGINE_CTX *ctx, PKCS11_CTX *pkcs11_ctx)
  	 * the context.
  	 */
  	_g_pkcs11_ctx = pkcs11_ctx;
-	ctx->pkcs11_ctx = pkcs11_ctx;
+	//ctx->pkcs11_ctx = pkcs11_ctx;
 	ctx->slot_list = slot_list;
 	ctx->slot_count = slot_count;
 
