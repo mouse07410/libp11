@@ -547,16 +547,6 @@ static void *ctx_try_load_object(ENGINE_CTX *ctx,
 			break;
 	}
 
-#if 0
-	if (selected_cert) {
-		x509 = X509_dup(selected_cert->x509);
-	} else {
-		if (login) /* Only print the error on the second attempt */
-			ctx_log(ctx, 0, "Certificate not found.\n");
-		x509 = NULL;
-	}
-
-#endif /* 0 */
 error:
 	/* Free the searched token data */
 	if (match_tok) {

@@ -77,24 +77,6 @@ int main(int argc, char *argv[])
 	module = argv[3];
 	efile = argv[4];
 
-#if 0
-	cert_fp = fopen(certfile, "rb");
-	if (!cert_fp) {
-		fprintf(stderr, "%s:%d Could not open file %s\n", __FILE__, __LINE__, certfile);
-		ret = 1;
-		goto end;
-	}
-
-	cert = PEM_read_X509(cert_fp, NULL, NULL, NULL);
-	if (!cert) {
-		fprintf(stderr, "%s:%d Could not read certificate file"
-		        "(must be PEM format)\n", __FILE__, __LINE__);
-	}
-
-	if (cert_fp) {
-		fclose(cert_fp);
-	}
-#endif
 
 	ret = CONF_modules_load_file(efile, "engines", 0);
 	if (ret <= 0) {
