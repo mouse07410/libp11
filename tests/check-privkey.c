@@ -179,7 +179,6 @@ int main(int argc, char *argv[])
 	}
 
 
-
 	ret = X509_check_private_key(cert, pkey);
 	if (!ret) {
 		printf("%s:%d Could not check private key\n", __FILE__, __LINE__);
