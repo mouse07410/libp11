@@ -33,7 +33,7 @@ AC_C_BIGENDIAN
 # issues with applications linking to new openssl, old libp11, and vice versa
 case "`$PKG_CONFIG --modversion --silence-errors libcrypto || \
 	$PKG_CONFIG --modversion openssl`" in
-	3.0.*) # Predicted engines directory prefix for OpenSSL 3.x
+	3.*) # Predicted engines directory prefix for OpenSSL 3.x
 	    LIBP11_LT_OLDEST="3"
 	    debian_ssl_prefix="openssl-3.0.0";;
 	1.1.*) # Predicted engines directory prefix for OpenSSL 1.1.x
@@ -206,6 +206,8 @@ PKG_CHECK_MODULES(
 	,
 	[AC_MSG_ERROR([libcrypto >= 0.9.8 is required])]
 )
+
+AC_CHECK_FUNCS([ X509_get0_notAfter X509_get0_notBefore ])
 
 if test -n "${pkcs11_module}"; then
 	AC_DEFINE_UNQUOTED(
