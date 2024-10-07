@@ -41,5 +41,7 @@ if [ -z "$CI" ]; then
 	fi
 fi
 
+date
+
 exit 0
 #
