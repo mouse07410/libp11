@@ -804,8 +804,13 @@ void pkcs11_ec_key_method_free(void)
 {
 	if (pkcs11_ec_key_method) {
 		free_ec_ex_index();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+		if (meth->pkcs11_ecdh_method & EC_KEY_METHOD_DYNAMIC)
+			OPENSSL_free(pkcs11_ec_key_method);
+#else
 		EC_KEY_METHOD_free(pkcs11_ec_key_method);
-	    pkcs11_ec_key_method = NULL;
+#endif
+		pkcs11_ec_key_method = NULL;
 	}
 }
 
@@ -842,8 +847,13 @@ void pkcs11_ecdsa_method_free(void)
 {
 	if (pkcs11_ecdsa_method) {
 		free_ec_ex_index();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+		if (pkcs11_ecdsa_method->flags & EC_KEY_METHOD_DYNAMIC)
+			OPENSSL_free(pkcs11_ecdsa_method);
+#else
 		EC_KEY_METHOD_free(pkcs11_ecdsa_method);
-	    pkcs11_ecdsa_method = NULL;
+#endif
+		pkcs11_ecdsa_method = NULL;
 	}
 }
 
@@ -862,8 +872,13 @@ void pkcs11_ecdh_method_free(void)
 {
 	if (pkcs11_ecdh_method) {
 		free_ec_ex_index();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+		if (pkcs11_ecdh_method->flags & EC_KEY_METHOD_DYNAMIC)
+			OPENSSL_free(pkcs11_ecdh_method);
+#else
 		EC_KEY_METHOD_free(pkcs11_ecdh_method);
-	    pkcs11_ecdh_method = NULL;
+#endif
+		pkcs11_ecdh_method = NULL;
 	}
 }
 
