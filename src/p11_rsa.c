@@ -535,11 +535,19 @@ void pkcs11_rsa_method_free(void)
 {
 	if (!pkcs11_rsa_method) {
 		free_rsa_ex_index();
+<<<<<<< HEAD
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 		RSA_meth_free(pkcs11_rsa_method);
 #else
 		OPENSSL_free((char *)pkcs11_rsa_method->name);
 		OPENSSL_free(pkcs11_rsa_method);
+=======
+#if OPENSSL_VERSION_NUMBER  >= 0x10100000L
+		RSA_meth_free(pkcs11_rsa_method);
+#else
+        OPENSSL_free((char *)pkcs11_rsa_method->name);
+        OPENSSL_free(pkcs11_rsa_method);
+>>>>>>> 986111b (Fixed typo in function name and handle dynamic RSA/EC_KEY methods freeing for older OpenSSL versions)
 #endif
 		pkcs11_rsa_method = NULL;
 	}
