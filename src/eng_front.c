@@ -140,14 +140,21 @@ static int engine_finish(ENGINE *engine)
 	if (!ctx)
 		return 0;
 
-	/* PKCS#11 modules that register their own atexit() callbacks may
-	 * already have been cleaned up by the time OpenSSL's atexit() callback
-	 * is executed. As a result, a crash occurs with certain versions of
-	 * OpenSSL and SoftHSM2. The workaround skips the execution of
-	 * ctx_finish() during OpenSSL's cleanup, converting the crash into
-	 * a harmless memory leak at exit. */
+	/* ENGINE_cleanup() used by OpenSSL versions before 1.1.0 invokes
+	 * our engine_finish() function with CRYPTO_LOCK_ENGINE acquired.
+	 * Any attempt to re-acquire CRYPTO_LOCK_ENGINE either by directly
+	 * invoking OpenSSL functions, or indirectly via PKCS#11 modules
+	 * that use OpenSSL engines, causes a deadlock. */
+	/* Our workaround is to skip ctx_finish() for the affected OpenSSL
+	 * versions, as a memory leak is better than a deadlock. */
+	/* We cannot simply temporarily release CRYPTO_LOCK_ENGINE here, as
+	 * engine_finish() is also executed from ENGINE_finish() without
+	 * acquired CRYPTO_LOCK_ENGINE, and there is no way with to check
+	 * whether a lock is already acquired with OpenSSL < 1.1.0 API. */
+#if OPENSSL_VERSION_NUMBER >= 0x10100005L && !defined(LIBRESSL_VERSION_NUMBER)
 	if (!shutdown_mode)
 		rv &= ctx_finish(ctx);
+#endif
 
 	return rv;
 }
