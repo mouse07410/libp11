@@ -6,9 +6,9 @@ make distclean || true
 O_DIR="/opt/local/libexec/openssl11"
 E_DIR="/opt/local/libexec/openssl11/lib/engines-1.1"
 THREE="" OPENSSL_DIR=${O_DIR} ENGINESDIR=${E_DIR} ./build-3.sh 2>&1 | tee ossl1-build.txt
-chown -R ur20980 *
+chown -R uri *
 sudo make install
-chown -R ur20980 *
+chown -R uri *
 if [ -z "$CI" ]; then
 	if [ -e ${E_DIR}/pkcs11.dylib ]; then
 	sudo codesign -s "Apple Development: uri@mit.edu (7TWWJNH7TG)" ${E_DIR}/pkcs11.dylib
@@ -17,16 +17,16 @@ if [ -z "$CI" ]; then
 	fi
 fi
 
-chown -R ur20980 *
+chown -R uri *
 
 # build engine for Macports-installed OpenSSL-3.0.0
 make distclean || true
 O_DIR="/opt/local/libexec/openssl3"
 E_DIR="/opt/local/libexec/openssl3/lib/engines-3"
 THREE="3m-" OPENSSL_DIR=${O_DIR} ENGINESDIR=${E_DIR} ./build-3.sh 2>&1 | tee ossl3m-build.txt
-chown -R ur20980 *
+chown -R uri *
 sudo make install
-chown -R ur20980 *
+chown -R uri *
 if [ -z "$CI" ]; then
 	if [ -e ${E_DIR}/pkcs11.dylib ]; then
 		sudo codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
@@ -37,11 +37,11 @@ fi
 
 # Build engine for locally-tracked OpenSSL-3 master
 make distclean || true
-O_DIR="/Users/ur20980/openssl-3/"
+O_DIR="/Users/uri/openssl-3/"
 E_DIR="${O_DIR}/lib/engines-3"
 THREE="3-" OPENSSL_DIR="" ENGINESDIR="" ./build-3.sh 2>&1 | tee ossl3-build.txt
 make install
-chown -R ur20980 *
+chown -R uri *
 if [ -z "$CI" ]; then
 	if [ -e ${E_DIR}/pkcs11.dylib ]; then
 		codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
