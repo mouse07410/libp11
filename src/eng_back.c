@@ -140,7 +140,7 @@ static char *dump_expiry(const PKCS11_CERT *cert)
 	}
 	/* Retrieve the data from the BIO */
 	len = BIO_get_mem_data(bio, &buf);
-	
+
 	result = OPENSSL_strndup((const char *)buf, (size_t)len);
 	BIO_free(bio);
 
@@ -352,7 +352,7 @@ static int ctx_init_libp11_unlocked(ENGINE_CTX *ctx)
 static int ctx_init_libp11(ENGINE_CTX *ctx)
 {
 	int rv;
-	
+
 	pthread_mutex_lock(&ctx->lock);
 	rv = ctx_init_libp11_unlocked(ctx);
 	pthread_mutex_unlock(&ctx->lock);
@@ -362,7 +362,7 @@ static int ctx_init_libp11(ENGINE_CTX *ctx)
 static int ctx_enumerate_slots(ENGINE_CTX *ctx)
 {
 	int rv;
-	
+
 	if (!ctx->pkcs11_ctx)
 		ctx_init_libp11(ctx);
 	if (!ctx->pkcs11_ctx)
@@ -1145,12 +1145,6 @@ static int ctx_ctrl_set_debug_level(ENGINE_CTX *ctx, int level)
 	return 1;
 }
 
-static int ctx_ctrl_set_quiet(ENGINE_CTX *ctx)
-{
-	ctx->debug_level = 0;
-	return 1;
-}
-
 static int ctx_ctrl_set_init_args(ENGINE_CTX *ctx, const char *init_args_orig)
 {
 	OPENSSL_free(ctx->init_args);
@@ -1208,8 +1202,10 @@ int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)())
 		return ctx_ctrl_set_pin(ctx, (const char *)p);
 	case CMD_DEBUG_LEVEL:
 		return ctx_ctrl_set_debug_level(ctx, (int)i);
+	case CMD_VERBOSE:
+		return ctx_ctrl_set_debug_level(ctx, 7);
 	case CMD_QUIET:
-		return ctx_ctrl_set_quiet(ctx);
+		return ctx_ctrl_set_debug_level(ctx, 0);
 	case CMD_LOAD_CERT_CTRL:
 		return ctx_ctrl_load_cert(ctx, p);
 	case CMD_INIT_ARGS:
