@@ -30,9 +30,9 @@ mkdir -p ${outdir}
 
 # List of directories to search
 SOFTHSM_SEARCH_PATHS=(
+	"/opt/local/lib/softhsm"
 	"/opt/homebrew"
 	"/usr/local/lib/softhsm"
-	"/opt/local/lib/softhsm"
 	"/usr/lib64/pkcs11"
 	"/usr/lib64/softhsm"
 	"/usr/lib/x86_64-linux-gnu/softhsm"

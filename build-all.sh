@@ -29,7 +29,8 @@ sudo make install
 chown -R uri *
 if [ -z "$CI" ]; then
 	if [ -e ${E_DIR}/pkcs11.dylib ]; then
-		sudo codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
+		sudo codesign -s "Apple Development: uri@mit.edu (7TWWJNH7TG)" ${E_DIR}/pkcs11.dylib
+		#sudo codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
 		sudo rm /opt/local/lib/engines-3/pkcs11.dylib
 		sudo ln -sf ${E_DIR}/pkcs11.dylib /opt/local/lib/engines-3/
 	fi
@@ -44,7 +45,8 @@ make install
 chown -R uri *
 if [ -z "$CI" ]; then
 	if [ -e ${E_DIR}/pkcs11.dylib ]; then
-		codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
+		codesign -s "Apple Development: uri@mit.edu (7TWWJNH7TG)" ${E_DIR}/pkcs11.dylib
+		#codesign -s "Apple Development: Uri Blumenthal (UU7Y5L3S5L)" ${E_DIR}/pkcs11.dylib
 	fi
 fi
 
