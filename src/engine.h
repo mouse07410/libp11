@@ -28,7 +28,17 @@
 #ifndef _ENGINE_PKCS11_H
 #define _ENGINE_PKCS11_H
 
-#ifndef _WIN32
+#ifdef _WIN32
+#define LOG_EMERG       0
+#define LOG_ALERT       1
+#define LOG_CRIT        2
+#define LOG_ERR         3
+#define LOG_WARNING     4
+#define LOG_NOTICE      5
+#define LOG_INFO        6
+#define LOG_DEBUG       7
+#else
+#include <syslog.h>
 #include "config.h"
 #endif
 
@@ -59,66 +69,32 @@
 #define CMD_VLOG_A              (ENGINE_CMD_BASE + 11)
 #define CMD_DEBUG_LEVEL         (ENGINE_CMD_BASE + 12)
 
-#ifdef _WIN32
-#define LOG_EMERG       0
-#define LOG_ALERT       1
-#define LOG_CRIT        2
-#define LOG_ERR         3
-#define LOG_WARNING     4
-#define LOG_NOTICE      5
-#define LOG_INFO        6
-#define LOG_DEBUG       7
-#else
-#include "config.h"
-#include <syslog.h>
-#endif
-
-typedef struct st_engine_ctx ENGINE_CTX; /* opaque */
+typedef struct engine_ctx_st ENGINE_CTX; /* opaque */
 
 /* defined in eng_back.c */
 
-ENGINE_CTX *ctx_new();
+ENGINE_CTX *ENGINE_CTX_new(void);
 
-int ctx_destroy(ENGINE_CTX *ctx);
+int ENGINE_CTX_destroy(ENGINE_CTX *ctx);
 
-int ctx_init(ENGINE_CTX *ctx);
+int ENGINE_CTX_init(ENGINE_CTX *ctx);
 
-int ctx_finish(ENGINE_CTX *ctx);
+int ENGINE_CTX_finish(ENGINE_CTX *ctx);
 
-int ctx_engine_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)());
+int ENGINE_CTX_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)(void));
 
-EVP_PKEY *ctx_load_pubkey(ENGINE_CTX *ctx, const char *s_key_id,
-	UI_METHOD *ui_method, void *callback_data);
+EVP_PKEY *ENGINE_CTX_load_pubkey(ENGINE_CTX *ctx, const char *s_key_id,
+	UI_METHOD *ui_method, void *ui_data);
 
-EVP_PKEY *ctx_load_privkey(ENGINE_CTX *ctx, const char *s_key_id,
-	UI_METHOD *ui_method, void *callback_data);
+EVP_PKEY *ENGINE_CTX_load_privkey(ENGINE_CTX *ctx, const char *s_key_id,
+	UI_METHOD *ui_method, void *ui_data);
 
-void ctx_log(ENGINE_CTX *ctx, int level, const char *format, ...)
+void ENGINE_CTX_log(ENGINE_CTX *ctx, int level, const char *format, ...)
 #ifdef __GNUC__
 	__attribute__((format(printf, 3, 4)))
 #endif
 	;
 
-/* defined in eng_parse.c */
-
-int parse_pkcs11_uri(ENGINE_CTX *ctx,
-	const char *uri, PKCS11_TOKEN **p_tok,
-	char *id, size_t *id_len, char *pin, size_t *pin_len,
-	char **label);
-
-int parse_slot_id_string(ENGINE_CTX *ctx,
-	const char *slot_id, int *slot,
-	char *id, size_t *id_len, char **label);
-
-/* switch to legacy call if get0 variant is not available */
-#ifndef HAVE_X509_GET0_NOTBEFORE
-#	define X509_get0_notBefore X509_get_notBefore
-#endif
-
-#ifndef HAVE_X509_GET0_NOTAFTER
-#	define X509_get0_notAfter X509_get_notAfter
-#endif
-
-#endif
+#endif /* _ENGINE_PKCS11_H */
 
 /* vim: set noexpandtab: */

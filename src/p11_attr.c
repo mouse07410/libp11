@@ -42,7 +42,7 @@ int pkcs11_getattr_var(PKCS11_CTX_private *ctx, CK_SESSION_HANDLE session,
 
 	templ.type = type;
 	templ.pValue = value;
-	templ.ulValueLen = *size;
+	templ.ulValueLen = (CK_ULONG)*size;
 	rv = CRYPTOKI_call(ctx, C_GetAttributeValue(session, object, &templ, 1));
 	CRYPTOKI_checkerr(CKR_F_PKCS11_GETATTR_INT, rv);
 	*size = templ.ulValueLen;
@@ -117,7 +117,7 @@ unsigned int pkcs11_addattr(PKCS11_TEMPLATE *tmpl, int type, void *data, size_t 
 	ap = &tmpl->attrs[tmpl->nattr++];
 	ap->type = type;
 	ap->pValue = data;
-	ap->ulValueLen = size;
+	ap->ulValueLen = (CK_ULONG)size;
 	return n;
 }
 
@@ -152,12 +152,16 @@ void pkcs11_addattr_obj(PKCS11_TEMPLATE *tmpl, int type, pkcs11_i2d_fn enc, void
 	size_t n;
 
 	n = enc(obj, NULL);
+	if (n == 0)
+		return;
+
 	buf = p = OPENSSL_malloc(n);
-	if (n && p) {
-		enc(obj, &p);
-		i = pkcs11_addattr(tmpl, type, buf, n);
-		tmpl->allocated |= 1<<i;
-	}
+	if (!buf)
+		return;
+
+	enc(obj, &p);
+	i = pkcs11_addattr(tmpl, type, buf, n);
+	tmpl->allocated |= 1<<i;
 }
 
 void pkcs11_zap_attrs(PKCS11_TEMPLATE *tmpl)

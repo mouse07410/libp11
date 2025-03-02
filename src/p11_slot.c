@@ -17,6 +17,7 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307  USA
  */
 
+#define _POSIX_C_SOURCE 200809L
 #include "libp11-int.h"
 #include <string.h>
 #include <openssl/buffer.h>
@@ -179,8 +180,7 @@ int pkcs11_get_session(PKCS11_SLOT_private *slot, int rw, CK_SESSION_HANDLE *ses
 			if (rv == CKR_OK) {
 				slot->num_sessions++;
 				break;
-			}
-			if (rv == CKR_TOKEN_NOT_RECOGNIZED) {
+			} else {
 				pthread_mutex_unlock(&slot->lock);
 				return -1;
 			}
