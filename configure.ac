@@ -5,7 +5,7 @@ AC_PREREQ([2.69])
 # When bumping versions see also the LT version numbers below.
 define([PACKAGE_VERSION_MAJOR], [0])
 define([PACKAGE_VERSION_MINOR], [4])
-define([PACKAGE_VERSION_FIX], [14])
+define([PACKAGE_VERSION_FIX], [15])
 define([PACKAGE_SUFFIX], [_git])
 
 AC_INIT([libp11],[PACKAGE_VERSION_MAJOR.PACKAGE_VERSION_MINOR.PACKAGE_VERSION_FIX[]PACKAGE_SUFFIX])
@@ -69,7 +69,7 @@ AM_CONDITIONAL([LIBP11_OSSL_PROVIDER], [test x$LIBP11_OSSL_PROVIDER = xyes])
 # release, we should either stick to supporting a single openssl ABI
 # or bump the LT_OLDEST version sufficiently to avoid clashes.
 LIBP11_LT_REVISION="0"
-LIBP11_LT_CURRENT="9"
+LIBP11_LT_CURRENT="10"
 LIBP11_LT_AGE="$((${LIBP11_LT_CURRENT}-${LIBP11_LT_OLDEST}))"
 
 gl_LD_VERSION_SCRIPT
@@ -232,9 +232,9 @@ fi
 
 PKG_CHECK_MODULES(
 	[OPENSSL],
-	[libcrypto >= 1.0.0],
+	[libcrypto >= 1.0.2],
 	,
-	[AC_MSG_ERROR([libcrypto >= 1.0.0 is required])]
+	[AC_MSG_ERROR([libcrypto >= 1.0.2 is required])]
 )
 
 AC_CHECK_FUNCS([ X509_get0_notAfter X509_get0_notBefore ])

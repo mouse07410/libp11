@@ -46,6 +46,10 @@
 #include "config.h"
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+#define strcasecmp _stricmp
+#endif
+
 /* defined in util_uri.c */
 typedef struct util_ctx_st UTIL_CTX; /* opaque */
 
@@ -55,12 +59,15 @@ int UTIL_CTX_set_module(UTIL_CTX *ctx, const char *module);
 int UTIL_CTX_set_init_args(UTIL_CTX *ctx, const char *init_args);
 int UTIL_CTX_set_ui_method(UTIL_CTX *ctx, UI_METHOD *ui_method, void *ui_data);
 int UTIL_CTX_enumerate_slots(UTIL_CTX *ctx);
-int UTIL_CTX_init_libp11(UTIL_CTX *ctx);
 void UTIL_CTX_free_libp11(UTIL_CTX *ctx);
 
 void UTIL_CTX_set_vlog_a(UTIL_CTX *ctx, PKCS11_VLOG_A_CB vlog);
 void UTIL_CTX_set_debug_level(UTIL_CTX *ctx, int debug_level);
-void UTIL_CTX_log(UTIL_CTX *ctx, int level, const char *format, ...);
+void UTIL_CTX_log(UTIL_CTX *ctx, int level, const char *format, ...)
+#ifdef __GNUC__
+	__attribute__((format(printf, 3, 4)))
+#endif
+	;
 
 int UTIL_CTX_set_pin(UTIL_CTX *ctx, const char *pin);
 void UTIL_CTX_set_force_login(UTIL_CTX *ctx, int force_login);
@@ -71,6 +78,8 @@ EVP_PKEY *UTIL_CTX_get_pubkey_from_uri(UTIL_CTX *ctx, const char *uri,
 	UI_METHOD *ui_method, void *ui_data);
 EVP_PKEY *UTIL_CTX_get_privkey_from_uri(UTIL_CTX *ctx, const char *uri,
 	UI_METHOD *ui_method, void *ui_data);
+
+int UTIL_CTX_keygen(UTIL_CTX *ctx, PKCS11_KGEN_ATTRS *kg_attrs);
 
 #endif /* _UTIL_LIBP11_H */
 

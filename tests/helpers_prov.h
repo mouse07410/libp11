@@ -38,7 +38,14 @@
 #include <openssl/provider.h>
 #include <openssl/ui.h>
 
+typedef struct {
+	EVP_PKEY *private_key;
+	EVP_PKEY *public_key;
+	X509 *cert;
+} OBJ_SET;
+
 void display_openssl_errors(void);
+void load_objects(const char *uri, const UI_METHOD *ui_method, OBJ_SET *set);
 EVP_PKEY *load_pkey(const char *uri, const UI_METHOD *ui_method);
 EVP_PKEY *load_pubkey(const char *uri);
 X509 *load_cert(const char *uri);

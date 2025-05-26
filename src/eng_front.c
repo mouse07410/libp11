@@ -29,7 +29,6 @@
 #define PKCS11_ENGINE_NAME "pkcs11 engine"
 
 static int pkcs11_idx = -1;
-static int shutdown_mode = 0;
 
 /* The definitions for control commands specific to this engine */
 
@@ -84,10 +83,14 @@ static const ENGINE_CMD_DEFN engine_cmd_defns[] = {
 		"VLOG_A",
 		"Set the logging callback",
 		ENGINE_CMD_FLAG_INTERNAL},
-	 {CMD_DEBUG_LEVEL,
+	{CMD_DEBUG_LEVEL,
 		"DEBUG_LEVEL",
 		"Set the debug level: 0=emerg, 1=alert, 2=crit, 3=err, 4=warning, 5=notice (default), 6=info, 7=debug",
 		ENGINE_CMD_FLAG_NUMERIC},
+	{CMD_KEYGEN,
+		"KEYGEN",
+		"Generate asymmetric key pair",
+		ENGINE_CMD_FLAG_INTERNAL},
 	{0, NULL, NULL, 0}
 };
 
@@ -148,14 +151,7 @@ static int engine_finish(ENGINE *engine)
 	if (!ctx)
 		return 0;
 
-	/* PKCS#11 modules that register their own atexit() callbacks may
-	 * already have been cleaned up by the time OpenSSL's atexit() callback
-	 * is executed. As a result, a crash occurs with certain versions of
-	 * OpenSSL and SoftHSM2. The workaround skips the execution of
-	 * ENGINE_CTX_finish() during OpenSSL's cleanup, converting the crash into
-	 * a harmless memory leak at exit. */
-	if (!shutdown_mode)
-		rv &= ENGINE_CTX_finish(ctx);
+	rv &= ENGINE_CTX_finish(ctx);
 
 	return rv;
 }
@@ -285,11 +281,6 @@ static int bind_helper_methods(ENGINE *e)
 	}
 }
 
-static void exit_callback(void)
-{
-	shutdown_mode = 1;
-}
-
 static int bind_fn(ENGINE *e, const char *id)
 {
 	if (id && (strcmp(id, PKCS11_ENGINE_ID) != 0)) {
@@ -300,7 +291,6 @@ static int bind_fn(ENGINE *e, const char *id)
 		ENGINE_CTX_log(NULL, LOG_ERR, "bind failed\n");
 		return 0;
 	}
-	atexit(exit_callback);
 	return 1;
 }
 

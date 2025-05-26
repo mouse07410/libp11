@@ -1,6 +1,6 @@
-/* libp11, a simple layer on to of PKCS#11 API
+/* libp11, a simple layer on top of PKCS#11 API
  * Copyright (C) 2005 Olaf Kirch <okir@lst.de>
- * Copyright (C) 2015-2018 Michał Trojnara <Michal.Trojnara@stunnel.org>
+ * Copyright (C) 2015-2025 Michał Trojnara <Michal.Trojnara@stunnel.org>
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -121,6 +121,8 @@ struct pkcs11_object_ops {
 extern PKCS11_OBJECT_ops pkcs11_rsa_ops;
 extern PKCS11_OBJECT_ops pkcs11_ec_ops;
 
+extern int pkcs11_global_data_refs;
+
 /*
  * Internal functions
  */
@@ -130,7 +132,6 @@ extern PKCS11_OBJECT_ops pkcs11_ec_ops;
 			CKRerr(f, rv); \
 			return -1; \
 		} \
-		ERR_clear_error(); \
 	} while (0)
 #define CRYPTOKI_call(ctx, func_and_args) \
 	ctx->method->func_and_args
@@ -332,9 +333,13 @@ extern int pkcs11_generate_random(PKCS11_SLOT_private *, unsigned char *r, unsig
 /* Internal implementation of deprecated features */
 
 /* Generate and store a private key on the token */
-extern int pkcs11_generate_key(PKCS11_SLOT_private *tpriv,
-	int algorithm, unsigned int bits,
-	char *label, unsigned char *id, size_t id_len);
+extern int pkcs11_rsa_keygen(PKCS11_SLOT_private *tpriv,
+	unsigned int bits, const char *label, const unsigned char *id,
+	size_t id_len, const PKCS11_params *params);
+
+extern int pkcs11_ec_keygen(PKCS11_SLOT_private *tpriv,
+	const char *curve , const char *label, const unsigned char *id,
+	size_t id_len, const PKCS11_params *params);
 
 /* Get the RSA key modulus size (in bytes) */
 extern int pkcs11_get_key_size(PKCS11_OBJECT_private *);

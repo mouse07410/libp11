@@ -293,6 +293,8 @@ int ENGINE_CTX_ctrl(ENGINE_CTX *ctx, int cmd, long i, void *p, void (*f)(void))
 		return ENGINE_CTX_ctrl_set_vlog(ctx, p);
 	case CMD_DEBUG_LEVEL:
 		return ENGINE_CTX_ctrl_set_debug_level(ctx, (int)i);
+	case CMD_KEYGEN:
+		return UTIL_CTX_keygen(ctx->util_ctx, p);
 	default:
 		ENGerr(ENG_F_CTX_ENGINE_CTRL, ENG_R_UNKNOWN_COMMAND);
 		break;

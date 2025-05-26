@@ -1,4 +1,4 @@
-/* libp11, a simple layer on to of PKCS#11 API
+/* libp11, a simple layer on top of PKCS#11 API
  * Copyright (C) 2005 Olaf Kirch <okir@lst.de>
  *
  *  This library is free software; you can redistribute it and/or
@@ -20,9 +20,7 @@
 #include <string.h>
 
 /* Global number of active PKCS11_CTX objects */
-static int pkcs11_global_data_refs = 0;
-
-static void pkcs11_global_data_free(void);
+int pkcs11_global_data_refs = 0;
 
 /*
  * Create a new context
@@ -79,7 +77,7 @@ static int pkcs11_initialize(PKCS11_CTX_private *cpriv)
 
 	memset(&args, 0, sizeof(args));
 	/* Unconditionally say using OS locking primitives is OK */
-	args.flags |= CKF_OS_LOCKING_OK;
+	// args.flags |= CKF_OS_LOCKING_OK;
 	args.pReserved = cpriv->init_args;
 	rv = cpriv->method->C_Initialize(&args);
 	if (rv && rv != CKR_CRYPTOKI_ALREADY_INITIALIZED) {
@@ -177,12 +175,7 @@ void pkcs11_CTX_free(PKCS11_CTX *ctx)
 	OPENSSL_free(ctx->_private);
 	OPENSSL_free(ctx);
 
-	if (--pkcs11_global_data_refs == 0)
-		pkcs11_global_data_free();
-}
-
-static void pkcs11_global_data_free(void)
-{
+	pkcs11_global_data_refs--;
 #ifndef OPENSSL_NO_RSA
 	pkcs11_rsa_method_free();
 #endif

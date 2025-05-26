@@ -23,10 +23,11 @@ check_PROGRAMS = \
 	rsa-oaep-prov \
 	check-privkey \
 	check-privkey-prov \
-	store-cert \
-	store-cert-prov \
 	dup-key \
-	dup-key-prov
+	dup-key-prov \
+	check-all-prov \
+	rsa-keygen \
+	ec-keygen
 dist_check_SCRIPTS = \
 	rsa-testpkcs11.softhsm \
 	rsa-testfork.softhsm \
@@ -36,11 +37,14 @@ dist_check_SCRIPTS = \
 	rsa-pss-sign.softhsm \
 	rsa-oaep.softhsm \
 	rsa-check-privkey.softhsm \
+	rsa-cert-store.softhsm \
+	rsa-keygen.softhsm \
 	ec-testfork.softhsm \
 	ec-evp-sign.softhsm \
 	ec-check-privkey.softhsm \
 	ec-cert-store.softhsm \
 	ec-copy.softhsm \
+	ec-keygen.softhsm \
 	fork-change-slot.softhsm \
 	case-insensitive.softhsm \
 	pkcs11-uri-without-token.softhsm \
@@ -49,9 +53,10 @@ dist_check_SCRIPTS = \
 	provider-rsa-pss-sign.softhsm \
 	provider-rsa-oaep.softhsm \
 	provider-rsa-check-privkey.softhsm \
+	provider-rsa-check-all.softhsm \
 	provider-ec-evp-sign.softhsm \
 	provider-ec-check-privkey.softhsm \
-	provider-ec-cert-store.softhsm \
+	provider-ec-check-all.softhsm \
 	provider-ec-copy.softhsm \
 	provider-fork-change-slot.softhsm \
 	provider-case-insensitive.softhsm \
@@ -67,7 +72,7 @@ dup_key_prov_SOURCES = dup-key-prov.c helpers_prov.c
 check_privkey_prov_SOURCES = check-privkey-prov.c helpers_prov.c
 rsa_pss_sign_prov_SOURCES = rsa-pss-sign-prov.c helpers_prov.c
 rsa_oaep_prov_SOURCES = rsa-oaep-prov.c helpers_prov.c
-store_cert_prov_SOURCES = store-cert-prov.c helpers_prov.c
+check_all_prov_SOURCES = check-all-prov.c helpers_prov.c
 
 TESTS = $(dist_check_SCRIPTS)
 

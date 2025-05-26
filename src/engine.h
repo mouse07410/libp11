@@ -2,7 +2,7 @@
  * Copyright (c) 2001 Markus Friedl
  * Copyright (c) 2002 Juha Yrjölä
  * Copyright (c) 2003 Kevin Stefanik
- * Copyright (c) 2016 Michał Trojnara
+ * Copyright (c) 2016-2025 Michał Trojnara
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -68,6 +68,7 @@
 #define CMD_RE_ENUMERATE        (ENGINE_CMD_BASE + 10)
 #define CMD_VLOG_A              (ENGINE_CMD_BASE + 11)
 #define CMD_DEBUG_LEVEL         (ENGINE_CMD_BASE + 12)
+#define CMD_KEYGEN              (ENGINE_CMD_BASE + 13)
 
 typedef struct engine_ctx_st ENGINE_CTX; /* opaque */
 

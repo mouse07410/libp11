@@ -33,14 +33,17 @@
 
 int main(int argc, char *argv[])
 {
-	EVP_PKEY *private_key = NULL;
-	X509 *cert = NULL;
+	OBJ_SET *obj_set;
 	int ret = EXIT_FAILURE;
 
-	if (argc < 2) {
-		fprintf(stderr, "usage: %s [certificate (PEM or URL)] [private key URL]\n", argv[0]);
+	if (argc < 1) {
+		fprintf(stderr, "usage: %s [object URL]\n", argv[0]);
 		return ret;
 	}
+
+	obj_set = OPENSSL_zalloc(sizeof(OBJ_SET));
+	if (!obj_set)
+		return ret;
 
 	/* Load pkcs11prov and default providers */
 	if (!providers_load()) {
@@ -48,37 +51,35 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	/* Load certificate */
-	cert = load_cert(argv[1]);
-	if (!cert) {
-		fprintf(stderr, "Cannot load certificate: %s\n", argv[1]);
-		display_openssl_errors();
+	/* Load private key, public key and certificate */
+	load_objects(argv[1], NULL, obj_set);
+
+	if (!obj_set->private_key) {
+		printf("Cannot load private key: %s\n", argv[1]);
 		goto cleanup;
 	}
-	printf("Certificate found: %s\n", argv[1]);
-
-	/* Load private key */
-	private_key = load_pkey(argv[2], NULL);
-	if (!private_key) {
-		fprintf(stderr, "Cannot load private key: %s\n", argv[1]);
-		display_openssl_errors();
+	if (!obj_set->public_key) {
+		printf("Cannot load public key: %s\n", argv[1]);
 		goto cleanup;
 	}
-	printf("Private key found.\n");
-
-	ret = X509_check_private_key(cert, private_key);
+	if (!obj_set->cert) {
+		printf("Cannot load certificate: %s\n", argv[1]);
+		goto cleanup;
+	}
+	ret = X509_check_private_key(obj_set->cert, obj_set->private_key);
 	if (!ret) {
 		printf("Could not check private key.\n");
 		display_openssl_errors();
 		goto cleanup;
 	}
-
 	printf("Key and certificate matched.\n");
 	ret = EXIT_SUCCESS;
 
 cleanup:
-	X509_free(cert);
-	EVP_PKEY_free(private_key);
+	EVP_PKEY_free(obj_set->private_key);
+	EVP_PKEY_free(obj_set->public_key);
+	X509_free(obj_set->cert);
+	OPENSSL_free(obj_set);
 	providers_cleanup();
 	printf("\n");
 	return ret;

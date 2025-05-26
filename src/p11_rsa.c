@@ -1,6 +1,6 @@
-/* libp11, a simple layer on to of PKCS#11 API
+/* libp11, a simple layer on top of PKCS#11 API
  * Copyright (C) 2005 Olaf Kirch <okir@lst.de>
- * Copyright (C) 2016-2017 Michał Trojnara <Michal.Trojnara@stunnel.org>
+ * Copyright (C) 2016-2025 Michał Trojnara <Michal.Trojnara@stunnel.org>
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -29,21 +29,16 @@
 static int rsa_ex_index = 0;
 static RSA_METHOD *pkcs11_rsa_method = NULL;
 
-static RSA *pkcs11_rsa(PKCS11_OBJECT_private *key)
+static RSA *pkcs11_get1_rsa(PKCS11_OBJECT_private *key)
 {
 	EVP_PKEY *evp_key = pkcs11_get_key(key, key->object_class);
 	RSA *rsa;
 
 	if (!evp_key)
 		return NULL;
-	rsa = (RSA *)EVP_PKEY_get0_RSA(evp_key);
-	/* Danger: this assumes evp_key returned above has at least reference
-	 * count of 2. Which is true in current code as long as key->object_class
-	 * is used for the object_class. */
+	rsa = (RSA *)EVP_PKEY_get1_RSA(evp_key);
 	EVP_PKEY_free(evp_key);
-	/* Freeing the object is necessary because the pkcs11_get_key()
-	 * function increments the reference count */
-	pkcs11_object_free(key);
+
 	return rsa;
 }
 
@@ -52,11 +47,16 @@ static RSA *pkcs11_rsa(PKCS11_OBJECT_private *key)
 int pkcs11_sign(int type, const unsigned char *m, unsigned int m_len,
 		unsigned char *sigret, unsigned int *siglen, PKCS11_OBJECT_private *key)
 {
-	RSA *rsa = pkcs11_rsa(key);
+	RSA *rsa = pkcs11_get1_rsa(key);
+	int ret;
 
 	if (!rsa)
 		return -1;
-	return RSA_sign(type, m, m_len, sigret, siglen, rsa);
+
+	ret = RSA_sign(type, m, m_len, sigret, siglen, rsa);
+
+	RSA_free(rsa);
+	return ret;
 }
 
 /* Setup PKCS#11 mechanisms for encryption/decryption */
@@ -304,6 +304,8 @@ static EVP_PKEY *pkcs11_get_evp_key_rsa(PKCS11_OBJECT_private *key)
 		return NULL;
 	}
 	if (key->object_class == CKO_PRIVATE_KEY) {
+		/* This creates a new RSA_KEY object which requires its own key object reference */
+		key = pkcs11_object_ref(key);
 		RSA_set_method(rsa, PKCS11_get_rsa_method());
 #if OPENSSL_VERSION_NUMBER >= 0x10100005L || ( defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER >= 0x3050000fL )
 		RSA_set_flags(rsa, RSA_FLAG_EXT_PKEY);
@@ -328,7 +330,7 @@ static EVP_PKEY *pkcs11_get_evp_key_rsa(PKCS11_OBJECT_private *key)
 /* TODO: remove this function in libp11 0.5.0 */
 int pkcs11_get_key_modulus(PKCS11_OBJECT_private *key, BIGNUM **bn)
 {
-	RSA *rsa = pkcs11_rsa(key);
+	RSA *rsa = pkcs11_get1_rsa(key);
 	const BIGNUM *rsa_n;
 
 	if (!rsa)
@@ -339,13 +341,16 @@ int pkcs11_get_key_modulus(PKCS11_OBJECT_private *key, BIGNUM **bn)
 	rsa_n = rsa->n;
 #endif
 	*bn = BN_dup(rsa_n);
+
+	RSA_free(rsa);
+
 	return *bn == NULL ? 0 : 1;
 }
 
 /* TODO: remove this function in libp11 0.5.0 */
 int pkcs11_get_key_exponent(PKCS11_OBJECT_private *key, BIGNUM **bn)
 {
-	RSA *rsa = pkcs11_rsa(key);
+	RSA *rsa = pkcs11_get1_rsa(key);
 	const BIGNUM *rsa_e;
 
 	if (!rsa)
@@ -356,17 +361,26 @@ int pkcs11_get_key_exponent(PKCS11_OBJECT_private *key, BIGNUM **bn)
 	rsa_e = rsa->e;
 #endif
 	*bn = BN_dup(rsa_e);
+
+	RSA_free(rsa);
+
 	return *bn == NULL ? 0 : 1;
 }
 
 /* TODO: make this function static in libp11 0.5.0 */
 int pkcs11_get_key_size(PKCS11_OBJECT_private *key)
 {
-	RSA *rsa = pkcs11_rsa(key);
+	RSA *rsa = pkcs11_get1_rsa(key);
+	int size;
 
 	if (!rsa)
 		return 0;
-	return RSA_size(rsa);
+
+	size = RSA_size(rsa);
+
+	RSA_free(rsa);
+
+	return size;
 }
 
 #if ( ( defined (OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x10100005L ) || ( defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x3020199L ) )
@@ -538,13 +552,14 @@ RSA_METHOD *PKCS11_get_rsa_method(void)
 		RSA_meth_set_priv_enc(pkcs11_rsa_method, pkcs11_rsa_priv_enc_method);
 		RSA_meth_set_priv_dec(pkcs11_rsa_method, pkcs11_rsa_priv_dec_method);
 		RSA_meth_set_finish(pkcs11_rsa_method, pkcs11_rsa_free_method);
+		atexit(pkcs11_rsa_method_free);
 	}
 	return pkcs11_rsa_method;
 }
 
 void pkcs11_rsa_method_free(void)
 {
-	if (pkcs11_rsa_method) {
+	if (pkcs11_global_data_refs == 0 && pkcs11_rsa_method) {
 		free_rsa_ex_index();
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 		RSA_meth_free(pkcs11_rsa_method);
