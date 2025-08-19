@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32) && !defined(strncasecmp)
 #define strncasecmp _strnicmp
 #else
 #include <strings.h>
@@ -420,7 +420,7 @@ int UTIL_CTX_set_pin(UTIL_CTX *ctx, const char *pin)
 /* Get the PIN via asking user interface. The supplied call-back data are
  * passed to the user interface implemented by an application. Only the
  * application knows how to interpret the call-back data.
- * A (strdup'ed) copy of the PIN code will be stored in the pin variable. */
+ * A (strdup'ed) copy of the PIN will be stored in the pin variable. */
 static int util_ctx_get_pin(UTIL_CTX *ctx, const char *token_label,
 		UI_METHOD *ui_method, void *ui_data)
 {
@@ -509,7 +509,7 @@ static int util_ctx_login(UTIL_CTX *ctx, PKCS11_SLOT *slot, PKCS11_TOKEN *tok,
 		memset(ctx->pin, 0, MAX_PIN_LENGTH+1);
 		if (!util_ctx_get_pin(ctx, tok->label, ui_method, ui_data)) {
 			UTIL_CTX_set_pin(ctx, NULL);
-			UTIL_CTX_log(ctx, LOG_ERR, "No PIN code was entered\n");
+			UTIL_CTX_log(ctx, LOG_ERR, "No PIN was entered\n");
 			return 0;
 		}
 	}
@@ -734,8 +734,12 @@ static int read_from_file(UTIL_CTX *ctx,
 		return 0;
 	}
 	if (BIO_gets(fp, txt, (int)*field_len + 1) > 0) {
-		memcpy(field, txt, *field_len);
-		*field_len = strlen(txt);
+		size_t len = strlen(txt);
+
+		while (len > 0 && (txt[len - 1] == '\n' || txt[len - 1] == '\r'))
+			len--;
+		memcpy(field, txt, len);
+		*field_len = len;
 	} else {
 		*field_len = 0;
 	}
